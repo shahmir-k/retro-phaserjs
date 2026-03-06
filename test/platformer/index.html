@@ -1,0 +1,146 @@
+<!DOCTYPE html>
+<html><head><title>Platformer Test</title></head>
+<body>
+<script src="../phaser-example/js/phaser.min.js"></script>
+<script>
+var GameScene = new Phaser.Class({
+    Extends: Phaser.Scene,
+    initialize: function GameScene() {
+        Phaser.Scene.call(this, { key: 'game' });
+    },
+
+    preload: function() {
+        this.load.image('tiles', 'img/tiles.png');
+        this.load.tilemapTiledJSON('level1', 'data/level1.json');
+        this.load.image('player', 'img/player.png');
+        this.load.image('star', 'img/star.png');
+    },
+
+    create: function() {
+        // Tilemap
+        var map = this.make.tilemap({ key: 'level1' });
+        var tileset = map.addTilesetImage('tiles');
+        var worldLayer = map.createStaticLayer('world', tileset, 0, 0);
+        worldLayer.setCollisionByExclusion([-1, 0]);
+
+        // Player with gravity physics
+        this.player = this.physics.add.sprite(64, 400, 'player');
+        this.player.setBounce(0.1);
+        this.player.setCollideWorldBounds(true);
+
+        // Collide player with tilemap
+        this.physics.add.collider(this.player, worldLayer);
+
+        // World bounds match tilemap size
+        this.physics.world.setBounds(0, 0, map.widthInPixels, map.heightInPixels);
+
+        // Stars (collectibles) scattered on platforms
+        this.stars = this.physics.add.group();
+        var starPositions = [
+            {x: 280, y: 160}, {x: 320, y: 160}, {x: 360, y: 160},
+            {x: 840, y: 192}, {x: 880, y: 192},
+            {x: 660, y: 256}, {x: 700, y: 256},
+            {x: 150, y: 352}, {x: 500, y: 352},
+            {x: 1000, y: 288}, {x: 1040, y: 288},
+            {x: 1160, y: 352}, {x: 1200, y: 352}
+        ];
+        for (var i = 0; i < starPositions.length; i++) {
+            var s = this.stars.create(starPositions[i].x, starPositions[i].y, 'star');
+            s.setBounce(0.4);
+            s.setCollideWorldBounds(true);
+        }
+        this.physics.add.collider(this.stars, worldLayer);
+        this.physics.add.overlap(this.player, this.stars, this.collectStar, null, this);
+
+        // Score text
+        this.score = 0;
+        this.scoreText = this.add.text(16, 16, 'Score: 0', {
+            fontSize: '24px',
+            fill: '#fff',
+            backgroundColor: '#000',
+            padding: { x: 8, y: 4 }
+        });
+        this.scoreText.setScrollFactor(0); // Fixed to camera
+
+        // Camera follows player, bounded by map
+        this.cameras.main.startFollow(this.player, true, 0.1, 0.1);
+        this.cameras.main.setBounds(0, 0, map.widthInPixels, map.heightInPixels);
+
+        // Input
+        this.cursors = this.input.keyboard.createCursorKeys();
+        this.wasd = this.input.keyboard.addKeys('W,A,S,D');
+
+        // Camera shake on landing (test camera effects)
+        this.wasInAir = false;
+
+        console.log('Platformer game created! Map: ' + map.widthInPixels + 'x' + map.heightInPixels);
+    },
+
+    collectStar: function(player, star) {
+        star.disableBody(true, true);
+        this.score += 10;
+        this.scoreText.setText('Score: ' + this.score);
+
+        // Tween scale effect on score text
+        this.tweens.add({
+            targets: this.scoreText,
+            scaleX: 1.3,
+            scaleY: 1.3,
+            duration: 100,
+            yoyo: true,
+            ease: 'Power2'
+        });
+
+        // Check if all stars collected
+        if (this.stars.countActive(true) === 0) {
+            this.scoreText.setText('YOU WIN! Score: ' + this.score);
+            console.log('All stars collected! Final score: ' + this.score);
+        }
+    },
+
+    update: function() {
+        var speed = 200;
+        var jumpSpeed = -400;
+
+        // Horizontal movement
+        if (this.cursors.left.isDown || this.wasd.A.isDown) {
+            this.player.setVelocityX(-speed);
+        } else if (this.cursors.right.isDown || this.wasd.D.isDown) {
+            this.player.setVelocityX(speed);
+        } else {
+            this.player.setVelocityX(0);
+        }
+
+        // Jump (only when on ground)
+        var onGround = this.player.body.blocked.down || this.player.body.touching.down;
+        if ((this.cursors.up.isDown || this.wasd.W.isDown || this.cursors.space.isDown) && onGround) {
+            this.player.setVelocityY(jumpSpeed);
+        }
+
+        // Camera micro-shake on hard landing
+        if (this.wasInAir && onGround && this.player.body.velocity.y === 0) {
+            this.cameras.main.shake(50, 0.003);
+        }
+        this.wasInAir = !onGround;
+    }
+});
+
+var config = {
+    type: Phaser.WEBGL,
+    width: 640,
+    height: 480,
+    backgroundColor: '#2d2d8a',
+    physics: {
+        default: 'arcade',
+        arcade: {
+            gravity: { y: 600 },
+            debug: false
+        }
+    },
+    scene: GameScene
+};
+
+var game = new Phaser.Game(config);
+</script>
+</body>
+</html>

@@ -213,7 +213,6 @@ int main(int argc, char *argv[]) {
         // Fire requestAnimationFrame callbacks
         fire_raf_callbacks(now_ms);
 
-        // Swap buffers
         SDL_GL_SwapWindow(g_engine.window);
     }
 

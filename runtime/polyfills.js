@@ -45,7 +45,8 @@ SoftCanvas2D.prototype._ensureBuffer = function() {
     var h = this.canvas.height || 1;
     var size = w * h * 4;
     if (!this._buffer || this._buffer.length !== size) {
-        this._buffer = new Uint8ClampedArray(size);
+        this._arrayBuffer = new ArrayBuffer(size);
+        this._buffer = new Uint8ClampedArray(this._arrayBuffer);
     }
 };
 
@@ -230,10 +231,103 @@ SoftCanvas2D.prototype.measureText = function(text) {
     return { width: width, actualBoundingBoxAscent: size * 0.8, actualBoundingBoxDescent: size * 0.2 };
 };
 
-SoftCanvas2D.prototype.fillText = function(text, x, y, maxWidth) {
-    // Stub - text rendering requires font rasterization (nanovg in future)
+// Built-in 5x7 bitmap font for basic text rendering
+// Each character is a 5-wide, 7-tall bitmap stored as 7 bytes (bit 4=leftmost pixel)
+var _font5x7 = {
+' ':[0,0,0,0,0,0,0],'!':[4,4,4,4,0,0,4],'#':[10,31,10,10,31,10,0],
+"'":[4,4,0,0,0,0,0],'"':[10,10,0,0,0,0,0],'(':[2,4,4,4,4,4,2],
+')':[8,4,4,4,4,4,8],'*':[0,10,4,14,4,10,0],'+':[0,4,4,31,4,4,0],
+',':[0,0,0,0,0,4,8],'-':[0,0,0,31,0,0,0],'.':[0,0,0,0,0,0,4],
+'/':[1,1,2,4,8,16,16],
+'0':[14,17,19,21,25,17,14],'1':[4,12,4,4,4,4,14],'2':[14,17,1,2,4,8,31],
+'3':[14,17,1,6,1,17,14],'4':[2,6,10,18,31,2,2],'5':[31,16,30,1,1,17,14],
+'6':[6,8,16,30,17,17,14],'7':[31,1,2,4,4,4,4],'8':[14,17,17,14,17,17,14],
+'9':[14,17,17,15,1,2,12],':':[0,0,4,0,0,4,0],';':[0,0,4,0,0,4,8],
+'<':[2,4,8,16,8,4,2],'=':[0,0,31,0,31,0,0],'>':[8,4,2,1,2,4,8],
+'?':[14,17,1,2,4,0,4],'@':[14,17,23,21,23,16,14],
+'A':[14,17,17,31,17,17,17],'B':[30,17,17,30,17,17,30],'C':[14,17,16,16,16,17,14],
+'D':[30,17,17,17,17,17,30],'E':[31,16,16,30,16,16,31],'F':[31,16,16,30,16,16,16],
+'G':[14,17,16,23,17,17,14],'H':[17,17,17,31,17,17,17],'I':[14,4,4,4,4,4,14],
+'J':[7,2,2,2,2,18,12],'K':[17,18,20,24,20,18,17],'L':[16,16,16,16,16,16,31],
+'M':[17,27,21,21,17,17,17],'N':[17,25,21,19,17,17,17],'O':[14,17,17,17,17,17,14],
+'P':[30,17,17,30,16,16,16],'Q':[14,17,17,17,21,18,13],'R':[30,17,17,30,20,18,17],
+'S':[14,17,16,14,1,17,14],'T':[31,4,4,4,4,4,4],'U':[17,17,17,17,17,17,14],
+'V':[17,17,17,17,10,10,4],'W':[17,17,17,21,21,27,17],'X':[17,17,10,4,10,17,17],
+'Y':[17,17,10,4,4,4,4],'Z':[31,1,2,4,8,16,31],
+'[':[6,4,4,4,4,4,6],']':[12,4,4,4,4,4,12],'_':[0,0,0,0,0,0,31],
+'a':[0,0,14,1,15,17,15],'b':[16,16,30,17,17,17,30],'c':[0,0,14,17,16,17,14],
+'d':[1,1,15,17,17,17,15],'e':[0,0,14,17,31,16,14],'f':[6,9,8,28,8,8,8],
+'g':[0,0,15,17,17,15,1,14],'h':[16,16,30,17,17,17,17],'i':[4,0,12,4,4,4,14],
+'j':[2,0,6,2,2,2,18,12],'k':[16,16,18,20,24,20,18],'l':[12,4,4,4,4,4,14],
+'m':[0,0,26,21,21,21,17],'n':[0,0,30,17,17,17,17],'o':[0,0,14,17,17,17,14],
+'p':[0,0,30,17,17,30,16,16],'q':[0,0,15,17,17,15,1,1],'r':[0,0,22,25,16,16,16],
+'s':[0,0,15,16,14,1,30],'t':[8,8,28,8,8,9,6],'u':[0,0,17,17,17,17,15],
+'v':[0,0,17,17,17,10,4],'w':[0,0,17,17,21,21,10],'x':[0,0,17,10,4,10,17],
+'y':[0,0,17,17,17,15,1,14],'z':[0,0,31,2,4,8,31]
 };
-SoftCanvas2D.prototype.strokeText = function(text, x, y, maxWidth) {};
+
+SoftCanvas2D.prototype.fillText = function(text, x, y, maxWidth) {
+    if (!text) return;
+    this._ensureBuffer();
+    var cw = this.canvas.width || 1;
+    var ch = this.canvas.height || 1;
+    var c = this._fillColor;
+    var a = Math.round(c[3] * this._globalAlpha);
+    if (a === 0) return;
+
+    // Parse font size
+    var fontSize = 10;
+    var m = this._font.match(/(\d+)px/);
+    if (m) fontSize = +m[1];
+    var scale = Math.max(1, Math.round(fontSize / 7));
+
+    // Adjust y for baseline
+    if (this._textBaseline === 'top') { /* y is already top */ }
+    else if (this._textBaseline === 'middle') { y -= (7 * scale) / 2; }
+    else { y -= 7 * scale; } // default: alphabetic/bottom
+
+    // Adjust x for alignment
+    var textWidth = text.length * 6 * scale;
+    if (this._textAlign === 'center') { x -= textWidth / 2; }
+    else if (this._textAlign === 'right' || this._textAlign === 'end') { x -= textWidth; }
+
+    x = Math.round(x);
+    y = Math.round(y);
+
+    for (var ci = 0; ci < text.length; ci++) {
+        var ch_code = text[ci];
+        var glyph = _font5x7[ch_code] || _font5x7[ch_code.toUpperCase()] || _font5x7['?'];
+        if (!glyph) continue;
+        var ox = x + ci * 6 * scale;
+        for (var row = 0; row < 7; row++) {
+            var bits = glyph[row] || 0;
+            for (var col = 0; col < 5; col++) {
+                if (bits & (16 >> col)) {
+                    for (var sy = 0; sy < scale; sy++) {
+                        for (var sx = 0; sx < scale; sx++) {
+                            var px = ox + col * scale + sx;
+                            var py = y + row * scale + sy;
+                            if (px >= 0 && px < cw && py >= 0 && py < ch) {
+                                var idx = (py * cw + px) * 4;
+                                this._buffer[idx]   = c[0];
+                                this._buffer[idx+1] = c[1];
+                                this._buffer[idx+2] = c[2];
+                                this._buffer[idx+3] = a;
+                            }
+                        }
+                    }
+                }
+            }
+        }
+    }
+};
+SoftCanvas2D.prototype.strokeText = function(text, x, y, maxWidth) {
+    // Use fillText with stroke color
+    var old = this._fillColor;
+    this._fillColor = this._strokeColor;
+    this.fillText(text, x, y, maxWidth);
+    this._fillColor = old;
+};
 
 SoftCanvas2D.prototype.drawImage = function() {};
 
@@ -358,6 +452,16 @@ window.__createCanvas = function() {
     canvas.parentNode = canvas.parentElement;
     canvas.ownerDocument = typeof document !== 'undefined' ? document : null;
     canvas.toDataURL = function() { return 'data:image/png;base64,'; };
+
+    // Expose 2D canvas pixel data for texImage2D upload
+    Object.defineProperty(canvas, '_pixelData', {
+        get: function() {
+            if (this._ctx2d && this._ctx2d._arrayBuffer) {
+                return this._ctx2d._arrayBuffer;
+            }
+            return null;
+        }
+    });
 
     return canvas;
 };
