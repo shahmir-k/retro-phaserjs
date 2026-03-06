@@ -179,7 +179,6 @@ int main(int argc, char *argv[]) {
     }
 
     // Main loop
-    int frame_count = 0;
     while (g_engine.running) {
         double now_ms = engine_now_ms();
 
@@ -198,26 +197,6 @@ int main(int argc, char *argv[]) {
 
         // Fire requestAnimationFrame callbacks
         fire_raf_callbacks(now_ms);
-
-        // Screenshot before swap (after rendering)
-        frame_count++;
-        if (frame_count == 120) {
-            uint8_t *pixels = malloc(width * height * 4);
-            glReadPixels(0, 0, width, height, GL_RGBA, GL_UNSIGNED_BYTE, pixels);
-            FILE *f = fopen("screenshot.ppm", "wb");
-            if (f) {
-                fprintf(f, "P6\n%d %d\n255\n", width, height);
-                for (int y = height - 1; y >= 0; y--) {
-                    for (int x = 0; x < width; x++) {
-                        int idx = (y * width + x) * 4;
-                        fwrite(pixels + idx, 1, 3, f); // write RGB, skip A
-                    }
-                }
-                fclose(f);
-                printf("[Engine] Screenshot saved: screenshot.ppm\n");
-            }
-            free(pixels);
-        }
 
         // Swap buffers
         SDL_GL_SwapWindow(g_engine.window);

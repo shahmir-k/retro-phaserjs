@@ -114,22 +114,25 @@ static void fire_key_event(const char *type, SDL_KeyboardEvent *key) {
 static void fire_mouse_event(const char *type, int x, int y, int button) {
     JSCContext *ctx = g_engine.js_ctx;
 
-    char js[1024];
+    char js[2048];
     snprintf(js, sizeof(js),
         "(function() {"
         "  var e = { type:'%s', clientX:%d, clientY:%d, pageX:%d, pageY:%d,"
         "    offsetX:%d, offsetY:%d, button:%d, buttons:%d,"
         "    pointerId:1, pointerType:'mouse', isPrimary:true,"
         "    preventDefault:function(){}, stopPropagation:function(){} };"
-        "  if (__canvas._listeners && __canvas._listeners['%s']) {"
-        "    __canvas._listeners['%s'].forEach(function(cb){ cb(e); });"
+        "  if (typeof _primaryCanvas !== 'undefined' && _primaryCanvas && _primaryCanvas._listeners && _primaryCanvas._listeners['%s']) {"
+        "    _primaryCanvas._listeners['%s'].slice().forEach(function(cb){ cb(e); });"
+        "  }"
+        "  if (typeof __canvas !== 'undefined' && __canvas._listeners && __canvas._listeners['%s']) {"
+        "    __canvas._listeners['%s'].slice().forEach(function(cb){ cb(e); });"
         "  }"
         "  if (window._eventListeners && window._eventListeners['%s']) {"
-        "    window._eventListeners['%s'].forEach(function(cb){ cb(e); });"
+        "    window._eventListeners['%s'].slice().forEach(function(cb){ cb(e); });"
         "  }"
         "})();",
         type, x, y, x, y, x, y, button, button ? 1 : 0,
-        type, type, type, type);
+        type, type, type, type, type, type);
 
     JSCValue *r = jsc_context_evaluate(ctx, js, -1);
     if (r) g_object_unref(r);

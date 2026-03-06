@@ -1,40 +1,169 @@
 #include "engine.h"
+#include <string.h>
+#include <unistd.h>
 
-// Stub audio shim - enough to not crash, real audio in Phase 6
+// Audio chunk storage keyed by integer ID
+static GHashTable *audio_table = NULL;
+static int next_audio_id = 1;
+
+static void audio_chunk_free(gpointer data) {
+    Mix_FreeChunk((Mix_Chunk *)data);
+}
+
+// __audioLoadChunkFromBuffer(arraybuffer) -> id or 0
+// Writes the arraybuffer to a temp file and loads with SDL_mixer
+static JSCValue *native_audio_load_from_buffer(GPtrArray *args, gpointer user_data) {
+    JSCContext *ctx = jsc_context_get_current();
+    if (args->len < 1) return jsc_value_new_number(ctx, 0);
+
+    JSCValue *buf = g_ptr_array_index(args, 0);
+    gsize len = 0;
+    void *data = NULL;
+
+    if (jsc_value_is_array_buffer(buf)) {
+        data = jsc_value_array_buffer_get_data(buf, &len);
+    } else if (jsc_value_is_typed_array(buf)) {
+        data = jsc_value_typed_array_get_data(buf, &len);
+        len = jsc_value_typed_array_get_size(buf);
+    }
+
+    if (!data || len == 0) return jsc_value_new_number(ctx, 0);
+
+    // Write to temp file for SDL_mixer
+    char tmppath[] = "/tmp/pq_audio_XXXXXX";
+    int fd = mkstemp(tmppath);
+    if (fd < 0) return jsc_value_new_number(ctx, 0);
+    write(fd, data, len);
+    close(fd);
+
+    Mix_Chunk *chunk = Mix_LoadWAV(tmppath);
+    unlink(tmppath);
+
+    if (!chunk) {
+        fprintf(stderr, "[Audio] Failed to decode buffer (%zu bytes): %s\n", len, Mix_GetError());
+        return jsc_value_new_number(ctx, 0);
+    }
+
+    int id = next_audio_id++;
+    if (!audio_table) {
+        audio_table = g_hash_table_new_full(g_direct_hash, g_direct_equal, NULL, audio_chunk_free);
+    }
+    g_hash_table_insert(audio_table, GINT_TO_POINTER(id), chunk);
+    printf("[Audio] Decoded buffer -> id=%d (%zu bytes)\n", id, len);
+
+    return jsc_value_new_number(ctx, id);
+}
+
+// __audioLoadChunk(path) -> id or 0
+static JSCValue *native_audio_load_chunk(GPtrArray *args, gpointer user_data) {
+    JSCContext *ctx = jsc_context_get_current();
+    if (args->len < 1) return jsc_value_new_number(ctx, 0);
+
+    char *url = jsc_value_to_string(g_ptr_array_index(args, 0));
+    char *path = engine_resolve_path(url);
+    g_free(url);
+
+    Mix_Chunk *chunk = Mix_LoadWAV(path);
+    if (!chunk) {
+        fprintf(stderr, "[Audio] Failed to load: %s (%s)\n", path, Mix_GetError());
+        free(path);
+        return jsc_value_new_number(ctx, 0);
+    }
+
+    int id = next_audio_id++;
+    if (!audio_table) {
+        audio_table = g_hash_table_new_full(g_direct_hash, g_direct_equal, NULL, audio_chunk_free);
+    }
+    g_hash_table_insert(audio_table, GINT_TO_POINTER(id), chunk);
+    printf("[Audio] Loaded: %s (id=%d)\n", path, id);
+    free(path);
+
+    return jsc_value_new_number(ctx, id);
+}
+
+// __audioPlayChunk(id, volume, loop)
+static void native_audio_play_chunk(GPtrArray *args, gpointer user_data) {
+    if (args->len < 1) return;
+    int id = jsc_value_to_int32(g_ptr_array_index(args, 0));
+    double volume = args->len > 1 ? jsc_value_to_double(g_ptr_array_index(args, 1)) : 1.0;
+    int loop = args->len > 2 ? jsc_value_to_int32(g_ptr_array_index(args, 2)) : 0;
+
+    Mix_Chunk *chunk = g_hash_table_lookup(audio_table, GINT_TO_POINTER(id));
+    if (!chunk) return;
+
+    int vol = (int)(volume * MIX_MAX_VOLUME);
+    Mix_VolumeChunk(chunk, vol);
+    Mix_PlayChannel(-1, chunk, loop ? -1 : 0);
+}
+
 void register_audio_shim(JSCContext *ctx) {
+    // Register native audio functions
+    JSCValue *load_fn = jsc_value_new_function_variadic(ctx, "__audioLoadChunk",
+        G_CALLBACK(native_audio_load_chunk), NULL, NULL, JSC_TYPE_VALUE);
+    jsc_context_set_value(ctx, "__audioLoadChunk", load_fn);
+    g_object_unref(load_fn);
+
+    JSCValue *play_fn = jsc_value_new_function_variadic(ctx, "__audioPlayChunk",
+        G_CALLBACK(native_audio_play_chunk), NULL, NULL, G_TYPE_NONE);
+    jsc_context_set_value(ctx, "__audioPlayChunk", play_fn);
+    g_object_unref(play_fn);
+
+    JSCValue *buf_fn = jsc_value_new_function_variadic(ctx, "__audioLoadFromBuffer",
+        G_CALLBACK(native_audio_load_from_buffer), NULL, NULL, JSC_TYPE_VALUE);
+    jsc_context_set_value(ctx, "__audioLoadFromBuffer", buf_fn);
+    g_object_unref(buf_fn);
+
+    // AudioContext with native-backed decodeAudioData and playback
     jsc_context_evaluate(ctx,
-        "function Audio(src) {"
-        "  this.src = src || '';"
-        "  this.volume = 1.0;"
-        "  this.loop = false;"
-        "  this.paused = true;"
-        "  this.currentTime = 0;"
-        "  this.duration = 0;"
-        "  this.readyState = 4;"
-        "  this.oncanplaythrough = null;"
-        "  this.onended = null;"
-        "  this.onerror = null;"
-        "  this.onload = null;"
-        "  this.play = function(){ this.paused = false; return Promise.resolve(); };"
-        "  this.pause = function(){ this.paused = true; };"
-        "  this.load = function(){};"
-        "  this.addEventListener = function(){};"
-        "  this.removeEventListener = function(){};"
-        "  this.cloneNode = function(){ return new Audio(this.src); };"
-        "  this.canPlayType = function(type){ return 'maybe'; };"
-        "}"
-        "window.Audio = Audio;"
-        "window.AudioContext = window.AudioContext || function() {"
+        "window.AudioContext = function() {"
         "  this.state = 'running';"
         "  this.currentTime = 0;"
         "  this.sampleRate = 44100;"
-        "  this.destination = {};"
-        "  this.createGain = function(){ return { gain: { value: 1, setValueAtTime: function(){} }, connect: function(){}, disconnect: function(){} }; };"
-        "  this.createBufferSource = function(){ return { buffer: null, loop: false, connect: function(){}, start: function(){}, stop: function(){}, addEventListener: function(){} }; };"
-        "  this.createOscillator = function(){ return { frequency: { value: 440 }, connect: function(){}, start: function(){}, stop: function(){} }; };"
-        "  this.decodeAudioData = function(buf, ok, err){ if(ok) setTimeout(function(){ ok({}); }, 0); };"
-        "  this.resume = function(){ return Promise.resolve(); };"
-        "  this.close = function(){ return Promise.resolve(); };"
+        "  this.destination = { _type: 'destination' };"
+        "  this.createGain = function() {"
+        "    return { gain: { value: 1, setValueAtTime: function(){} },"
+        "             connect: function(){}, disconnect: function(){} };"
+        "  };"
+        "  this.createBufferSource = function() {"
+        "    var src = {"
+        "      buffer: null, loop: false, loopStart: 0, loopEnd: 0,"
+        "      _volume: 1.0,"
+        "      connect: function(dest) { if (dest && dest.gain) this._volume = dest.gain.value; return this; },"
+        "      disconnect: function() {},"
+        "      start: function() {"
+        "        if (this.buffer && this.buffer._nativeId) {"
+        "          __audioPlayChunk(this.buffer._nativeId, this._volume, this.loop ? 1 : 0);"
+        "        }"
+        "      },"
+        "      stop: function() {},"
+        "      addEventListener: function() {},"
+        "      removeEventListener: function() {},"
+        "      onended: null"
+        "    };"
+        "    return src;"
+        "  };"
+        "  this.decodeAudioData = function(buf, ok, err) {"
+        "    var nativeId = 0;"
+        "    if (buf) {"
+        "      var u8 = new Uint8Array(buf.byteLength ? buf : (buf.buffer || buf));"
+        "      nativeId = __audioLoadFromBuffer(u8);"
+        "    }"
+        "    var audioBuffer = {"
+        "      duration: 1.0,"
+        "      length: 44100,"
+        "      numberOfChannels: 2,"
+        "      sampleRate: 44100,"
+        "      _nativeId: nativeId,"
+        "      getChannelData: function() { return new Float32Array(44100); }"
+        "    };"
+        "    if (ok) setTimeout(function(){ ok(audioBuffer); }, 0);"
+        "    return Promise.resolve(audioBuffer);"
+        "  };"
+        "  this.resume = function() { return Promise.resolve(); };"
+        "  this.close = function() { return Promise.resolve(); };"
+        "  this.createOscillator = function() {"
+        "    return { frequency: { value: 440 }, connect: function(){}, start: function(){}, stop: function(){} };"
+        "  };"
         "};"
         "window.webkitAudioContext = window.AudioContext;"
         , -1);

@@ -403,6 +403,34 @@ window.__createStubElement = function(tag) {
     el.dispatchEvent = function() {};
     el.parentElement = null;
     el.parentNode = null;
+
+    // Audio element needs canPlayType for Phaser's device detection
+    if (tag.toLowerCase() === 'audio') {
+        el.canPlayType = function(mime) {
+            if (mime.indexOf('audio/ogg') >= 0) return 'maybe';
+            if (mime.indexOf('audio/mpeg') >= 0) return 'maybe';
+            if (mime.indexOf('audio/wav') >= 0) return 'maybe';
+            if (mime.indexOf('audio/mp4') >= 0) return 'maybe';
+            if (mime.indexOf('audio/aac') >= 0) return 'maybe';
+            if (mime.indexOf('audio/webm') >= 0) return 'maybe';
+            if (mime.indexOf('audio/x-m4a') >= 0) return 'maybe';
+            return '';
+        };
+        el.play = function() { return Promise.resolve(); };
+        el.pause = function() {};
+        el.load = function() {};
+        el.volume = 1;
+        el.muted = false;
+        el.paused = true;
+        el.src = '';
+    }
+    return el;
+};
+
+// Audio constructor (Phaser checks window['Audio'])
+window.Audio = function(src) {
+    var el = __createStubElement('audio');
+    if (src) el.src = src;
     return el;
 };
 

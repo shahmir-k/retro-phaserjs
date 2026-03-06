@@ -59,6 +59,11 @@ target_link_libraries(phaserquest
 
 target_compile_options(phaserquest PRIVATE -Wall -Wextra -Wno-unused-parameter)
 
-# Copy runtime files to build directory
-file(COPY ${CMAKE_SOURCE_DIR}/runtime DESTINATION ${CMAKE_BINARY_DIR})
-file(COPY ${CMAKE_SOURCE_DIR}/test DESTINATION ${CMAKE_BINARY_DIR})
+# Copy runtime files to build directory on every build
+add_custom_command(TARGET phaserquest POST_BUILD
+    COMMAND ${CMAKE_COMMAND} -E copy_directory
+        ${CMAKE_SOURCE_DIR}/runtime ${CMAKE_BINARY_DIR}/runtime
+    COMMAND ${CMAKE_COMMAND} -E copy_directory
+        ${CMAKE_SOURCE_DIR}/test ${CMAKE_BINARY_DIR}/test
+    COMMENT "Syncing runtime/ and test/ to build directory"
+)
