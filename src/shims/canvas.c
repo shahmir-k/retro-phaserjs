@@ -17,8 +17,15 @@ static JSCValue *native_getContext(GPtrArray *args, gpointer user_data) {
         return jsc_value_new_null(ctx);
     }
 
+    if (strcmp(type, "2d") == 0) {
+        g_free(type);
+        // Return a SoftCanvas2D for the primary canvas
+        JSCValue *r = jsc_context_evaluate(ctx,
+            "(function() { if (typeof __SoftCanvas2D !== 'undefined') return new __SoftCanvas2D(__canvas); return null; })()", -1);
+        return r;
+    }
+
     g_free(type);
-    // TODO: Canvas2D context
     return jsc_value_new_null(ctx);
 }
 

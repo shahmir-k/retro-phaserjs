@@ -214,6 +214,39 @@ static void gl_uniform4fv(GPtrArray *args, gpointer ud) {
     }
 }
 
+static void gl_uniform1iv(GPtrArray *args, gpointer ud) {
+    JSCValue *arr = ARG(1);
+    if (jsc_value_is_typed_array(arr)) {
+        gsize len;
+        int *data = (int *)jsc_value_typed_array_get_data(arr, &len);
+        glUniform1iv(ARG_INT(0), len, data);
+    }
+}
+static void gl_uniform2iv(GPtrArray *args, gpointer ud) {
+    JSCValue *arr = ARG(1);
+    if (jsc_value_is_typed_array(arr)) {
+        gsize len;
+        int *data = (int *)jsc_value_typed_array_get_data(arr, &len);
+        glUniform2iv(ARG_INT(0), len / 2, data);
+    }
+}
+static void gl_uniform3iv(GPtrArray *args, gpointer ud) {
+    JSCValue *arr = ARG(1);
+    if (jsc_value_is_typed_array(arr)) {
+        gsize len;
+        int *data = (int *)jsc_value_typed_array_get_data(arr, &len);
+        glUniform3iv(ARG_INT(0), len / 3, data);
+    }
+}
+static void gl_uniform4iv(GPtrArray *args, gpointer ud) {
+    JSCValue *arr = ARG(1);
+    if (jsc_value_is_typed_array(arr)) {
+        gsize len;
+        int *data = (int *)jsc_value_typed_array_get_data(arr, &len);
+        glUniform4iv(ARG_INT(0), len / 4, data);
+    }
+}
+
 static void gl_uniformMatrix2fv(GPtrArray *args, gpointer ud) {
     JSCValue *arr = ARG(2);
     if (jsc_value_is_typed_array(arr)) {
@@ -527,13 +560,126 @@ static JSCValue *gl_getParameter(GPtrArray *args, gpointer ud) {
     }
 }
 
+// --- WebGL Extension implementations ---
+
+static JSCValue *gl_drawArraysInstanced(GPtrArray *args, gpointer ud) {
+    glDrawArraysInstanced(ARG_INT(0), ARG_INT(1), ARG_INT(2), ARG_INT(3));
+    return jsc_value_new_undefined(CTX());
+}
+
+static JSCValue *gl_drawElementsInstanced(GPtrArray *args, gpointer ud) {
+    glDrawElementsInstanced(ARG_INT(0), ARG_INT(1), ARG_INT(2),
+        (const void *)(intptr_t)ARG_INT(3), ARG_INT(4));
+    return jsc_value_new_undefined(CTX());
+}
+
+static JSCValue *gl_vertexAttribDivisor(GPtrArray *args, gpointer ud) {
+    glVertexAttribDivisor(ARG_INT(0), ARG_INT(1));
+    return jsc_value_new_undefined(CTX());
+}
+
+static JSCValue *gl_createVertexArray(GPtrArray *args, gpointer ud) {
+    GLuint vao;
+    glGenVertexArrays(1, &vao);
+    return jsc_value_new_number(CTX(), vao);
+}
+
+static JSCValue *gl_deleteVertexArray(GPtrArray *args, gpointer ud) {
+    GLuint vao = ARG_INT(0);
+    glDeleteVertexArrays(1, &vao);
+    return jsc_value_new_undefined(CTX());
+}
+
+static JSCValue *gl_bindVertexArray(GPtrArray *args, gpointer ud) {
+    GLuint vao = 0;
+    if (ARG(0) && !jsc_value_is_null(ARG(0))) vao = ARG_INT(0);
+    glBindVertexArray(vao);
+    return jsc_value_new_undefined(CTX());
+}
+
+static JSCValue *gl_isVertexArray(GPtrArray *args, gpointer ud) {
+    return jsc_value_new_boolean(CTX(), glIsVertexArray(ARG_INT(0)));
+}
+
 static JSCValue *gl_getExtension(GPtrArray *args, gpointer ud) {
-    // Return null for most extensions; Phaser handles this gracefully
-    return jsc_value_new_null(CTX());
+    if (args->len < 1) return jsc_value_new_null(CTX());
+    char *name = jsc_value_to_string(ARG(0));
+    JSCContext *ctx = CTX();
+    JSCValue *ext = NULL;
+
+    if (strcmp(name, "ANGLE_instanced_arrays") == 0) {
+        ext = jsc_value_new_object(ctx, NULL, NULL);
+        JSCValue *f1 = jsc_value_new_function_variadic(ctx, "drawArraysInstancedANGLE",
+            G_CALLBACK(gl_drawArraysInstanced), NULL, NULL, JSC_TYPE_VALUE);
+        JSCValue *f2 = jsc_value_new_function_variadic(ctx, "drawElementsInstancedANGLE",
+            G_CALLBACK(gl_drawElementsInstanced), NULL, NULL, JSC_TYPE_VALUE);
+        JSCValue *f3 = jsc_value_new_function_variadic(ctx, "vertexAttribDivisorANGLE",
+            G_CALLBACK(gl_vertexAttribDivisor), NULL, NULL, JSC_TYPE_VALUE);
+        jsc_value_object_set_property(ext, "drawArraysInstancedANGLE", f1);
+        jsc_value_object_set_property(ext, "drawElementsInstancedANGLE", f2);
+        jsc_value_object_set_property(ext, "vertexAttribDivisorANGLE", f3);
+        jsc_value_object_set_property(ext, "VERTEX_ATTRIB_ARRAY_DIVISOR_ANGLE",
+            jsc_value_new_number(ctx, 0x88FE));
+        g_object_unref(f1); g_object_unref(f2); g_object_unref(f3);
+    } else if (strcmp(name, "OES_vertex_array_object") == 0) {
+        ext = jsc_value_new_object(ctx, NULL, NULL);
+        JSCValue *f1 = jsc_value_new_function_variadic(ctx, "createVertexArrayOES",
+            G_CALLBACK(gl_createVertexArray), NULL, NULL, JSC_TYPE_VALUE);
+        JSCValue *f2 = jsc_value_new_function_variadic(ctx, "deleteVertexArrayOES",
+            G_CALLBACK(gl_deleteVertexArray), NULL, NULL, JSC_TYPE_VALUE);
+        JSCValue *f3 = jsc_value_new_function_variadic(ctx, "bindVertexArrayOES",
+            G_CALLBACK(gl_bindVertexArray), NULL, NULL, JSC_TYPE_VALUE);
+        JSCValue *f4 = jsc_value_new_function_variadic(ctx, "isVertexArrayOES",
+            G_CALLBACK(gl_isVertexArray), NULL, NULL, JSC_TYPE_VALUE);
+        jsc_value_object_set_property(ext, "createVertexArrayOES", f1);
+        jsc_value_object_set_property(ext, "deleteVertexArrayOES", f2);
+        jsc_value_object_set_property(ext, "bindVertexArrayOES", f3);
+        jsc_value_object_set_property(ext, "isVertexArrayOES", f4);
+        jsc_value_object_set_property(ext, "VERTEX_ARRAY_BINDING_OES",
+            jsc_value_new_number(ctx, 0x85B5));
+        g_object_unref(f1); g_object_unref(f2); g_object_unref(f3); g_object_unref(f4);
+    } else if (strcmp(name, "OES_element_index_uint") == 0 ||
+               strcmp(name, "OES_standard_derivatives") == 0 ||
+               strcmp(name, "OES_texture_float") == 0 ||
+               strcmp(name, "OES_texture_half_float") == 0 ||
+               strcmp(name, "OES_texture_float_linear") == 0 ||
+               strcmp(name, "OES_texture_half_float_linear") == 0 ||
+               strcmp(name, "WEBGL_depth_texture") == 0 ||
+               strcmp(name, "EXT_blend_minmax") == 0 ||
+               strcmp(name, "EXT_frag_depth") == 0 ||
+               strcmp(name, "EXT_shader_texture_lod") == 0 ||
+               strcmp(name, "WEBGL_lose_context") == 0) {
+        // These extensions just need a truthy return value (no methods needed)
+        ext = jsc_value_new_object(ctx, NULL, NULL);
+        // HALF_FLOAT_OES constant needed by OES_texture_half_float
+        if (strcmp(name, "OES_texture_half_float") == 0) {
+            jsc_value_object_set_property(ext, "HALF_FLOAT_OES",
+                jsc_value_new_number(ctx, 0x8D61));
+        }
+        if (strcmp(name, "EXT_blend_minmax") == 0) {
+            jsc_value_object_set_property(ext, "MIN_EXT", jsc_value_new_number(ctx, 0x8007));
+            jsc_value_object_set_property(ext, "MAX_EXT", jsc_value_new_number(ctx, 0x8008));
+        }
+        if (strcmp(name, "WEBGL_lose_context") == 0) {
+            JSCValue *dummy = jsc_context_evaluate(ctx,
+                "(function(){ return { loseContext: function(){}, restoreContext: function(){} }; })()", -1);
+            g_free(name);
+            return dummy;
+        }
+    }
+
+    g_free(name);
+    return ext ? ext : jsc_value_new_null(ctx);
 }
 
 static JSCValue *gl_getSupportedExtensions(GPtrArray *args, gpointer ud) {
-    return jsc_value_new_array(CTX(), G_TYPE_NONE);
+    JSCContext *ctx = CTX();
+    return jsc_context_evaluate(ctx,
+        "['ANGLE_instanced_arrays','OES_vertex_array_object','OES_element_index_uint',"
+        "'OES_standard_derivatives','OES_texture_float','OES_texture_half_float',"
+        "'OES_texture_float_linear','OES_texture_half_float_linear',"
+        "'WEBGL_depth_texture','EXT_blend_minmax','EXT_frag_depth',"
+        "'EXT_shader_texture_lod','WEBGL_lose_context']", -1);
 }
 
 static JSCValue *gl_isContextLost(GPtrArray *args, gpointer ud) {
@@ -553,6 +699,143 @@ static void gl_readPixels(GPtrArray *args, gpointer ud) {
 static void gl_flush(GPtrArray *args, gpointer ud) { glFlush(); }
 static void gl_finish(GPtrArray *args, gpointer ud) { glFinish(); }
 static void gl_hint(GPtrArray *args, gpointer ud) { glHint(ARG_INT(0), ARG_INT(1)); }
+
+static JSCValue *gl_isEnabled(GPtrArray *args, gpointer ud) {
+    return jsc_value_new_boolean(CTX(), glIsEnabled(ARG_INT(0)));
+}
+
+static void gl_blendColor(GPtrArray *args, gpointer ud) {
+    glBlendColor(ARG_DOUBLE(0), ARG_DOUBLE(1), ARG_DOUBLE(2), ARG_DOUBLE(3));
+}
+
+static void gl_depthRange(GPtrArray *args, gpointer ud) {
+    glDepthRangef(ARG_DOUBLE(0), ARG_DOUBLE(1));
+}
+
+static void gl_polygonOffset(GPtrArray *args, gpointer ud) {
+    glPolygonOffset(ARG_DOUBLE(0), ARG_DOUBLE(1));
+}
+
+static void gl_sampleCoverage(GPtrArray *args, gpointer ud) {
+    glSampleCoverage(ARG_DOUBLE(0), ARG_BOOL(1));
+}
+
+static void gl_stencilFuncSeparate(GPtrArray *args, gpointer ud) {
+    glStencilFuncSeparate(ARG_INT(0), ARG_INT(1), ARG_INT(2), ARG_INT(3));
+}
+
+static void gl_stencilMaskSeparate(GPtrArray *args, gpointer ud) {
+    glStencilMaskSeparate(ARG_INT(0), ARG_INT(1));
+}
+
+static void gl_stencilOpSeparate(GPtrArray *args, gpointer ud) {
+    glStencilOpSeparate(ARG_INT(0), ARG_INT(1), ARG_INT(2), ARG_INT(3));
+}
+
+static JSCValue *gl_getBufferParameter(GPtrArray *args, gpointer ud) {
+    GLint val;
+    glGetBufferParameteriv(ARG_INT(0), ARG_INT(1), &val);
+    return jsc_value_new_number(CTX(), val);
+}
+
+static JSCValue *gl_getTexParameter(GPtrArray *args, gpointer ud) {
+    GLint val;
+    glGetTexParameteriv(ARG_INT(0), ARG_INT(1), &val);
+    return jsc_value_new_number(CTX(), val);
+}
+
+static JSCValue *gl_getVertexAttrib(GPtrArray *args, gpointer ud) {
+    GLenum pname = ARG_INT(1);
+    if (pname == GL_CURRENT_VERTEX_ATTRIB) {
+        GLfloat v[4];
+        glGetVertexAttribfv(ARG_INT(0), pname, v);
+        JSCValue *arr = jsc_value_new_typed_array(CTX(), JSC_TYPED_ARRAY_FLOAT32, 4);
+        gsize sz;
+        float *data = jsc_value_typed_array_get_data(arr, &sz);
+        memcpy(data, v, 16);
+        return arr;
+    }
+    GLint val;
+    glGetVertexAttribiv(ARG_INT(0), pname, &val);
+    if (pname == GL_VERTEX_ATTRIB_ARRAY_ENABLED || pname == GL_VERTEX_ATTRIB_ARRAY_NORMALIZED)
+        return jsc_value_new_boolean(CTX(), val);
+    return jsc_value_new_number(CTX(), val);
+}
+
+static JSCValue *gl_getVertexAttribOffset(GPtrArray *args, gpointer ud) {
+    GLvoid *ptr;
+    glGetVertexAttribPointerv(ARG_INT(0), ARG_INT(1), &ptr);
+    return jsc_value_new_number(CTX(), (intptr_t)ptr);
+}
+
+static JSCValue *gl_getUniform(GPtrArray *args, gpointer ud) {
+    // Return a float value for the uniform (simplified)
+    GLfloat val;
+    glGetUniformfv(ARG_INT(0), ARG_INT(1), &val);
+    return jsc_value_new_number(CTX(), val);
+}
+
+static void gl_copyTexImage2D(GPtrArray *args, gpointer ud) {
+    glCopyTexImage2D(ARG_INT(0), ARG_INT(1), ARG_INT(2), ARG_INT(3),
+                     ARG_INT(4), ARG_INT(5), ARG_INT(6), ARG_INT(7));
+}
+
+static void gl_copyTexSubImage2D(GPtrArray *args, gpointer ud) {
+    glCopyTexSubImage2D(ARG_INT(0), ARG_INT(1), ARG_INT(2), ARG_INT(3),
+                        ARG_INT(4), ARG_INT(5), ARG_INT(6), ARG_INT(7));
+}
+
+static JSCValue *gl_isTexture(GPtrArray *args, gpointer ud) {
+    return jsc_value_new_boolean(CTX(), glIsTexture(ARG_INT(0)));
+}
+static JSCValue *gl_isBuffer(GPtrArray *args, gpointer ud) {
+    return jsc_value_new_boolean(CTX(), glIsBuffer(ARG_INT(0)));
+}
+static JSCValue *gl_isFramebuffer(GPtrArray *args, gpointer ud) {
+    return jsc_value_new_boolean(CTX(), glIsFramebuffer(ARG_INT(0)));
+}
+static JSCValue *gl_isRenderbuffer(GPtrArray *args, gpointer ud) {
+    return jsc_value_new_boolean(CTX(), glIsRenderbuffer(ARG_INT(0)));
+}
+static JSCValue *gl_isProgram(GPtrArray *args, gpointer ud) {
+    return jsc_value_new_boolean(CTX(), glIsProgram(ARG_INT(0)));
+}
+static JSCValue *gl_isShader(GPtrArray *args, gpointer ud) {
+    return jsc_value_new_boolean(CTX(), glIsShader(ARG_INT(0)));
+}
+
+static JSCValue *gl_getShaderSource(GPtrArray *args, gpointer ud) {
+    GLint len;
+    glGetShaderiv(ARG_INT(0), GL_SHADER_SOURCE_LENGTH, &len);
+    if (len <= 0) return jsc_value_new_string(CTX(), "");
+    char *buf = malloc(len);
+    glGetShaderSource(ARG_INT(0), len, NULL, buf);
+    JSCValue *r = jsc_value_new_string(CTX(), buf);
+    free(buf);
+    return r;
+}
+
+static JSCValue *gl_getShaderPrecisionFormat(GPtrArray *args, gpointer ud) {
+    GLint range[2], prec;
+    glGetShaderPrecisionFormat(ARG_INT(0), ARG_INT(1), range, &prec);
+    JSCValue *obj = jsc_value_new_object(CTX(), NULL, NULL);
+    jsc_value_object_set_property(obj, "rangeMin", jsc_value_new_number(CTX(), range[0]));
+    jsc_value_object_set_property(obj, "rangeMax", jsc_value_new_number(CTX(), range[1]));
+    jsc_value_object_set_property(obj, "precision", jsc_value_new_number(CTX(), prec));
+    return obj;
+}
+
+static JSCValue *gl_getRenderbufferParameter(GPtrArray *args, gpointer ud) {
+    GLint val;
+    glGetRenderbufferParameteriv(ARG_INT(0), ARG_INT(1), &val);
+    return jsc_value_new_number(CTX(), val);
+}
+
+static JSCValue *gl_getFramebufferAttachmentParameter(GPtrArray *args, gpointer ud) {
+    GLint val;
+    glGetFramebufferAttachmentParameteriv(ARG_INT(0), ARG_INT(1), ARG_INT(2), &val);
+    return jsc_value_new_number(CTX(), val);
+}
 
 static JSCValue *gl_getActiveAttrib(GPtrArray *args, gpointer ud) {
     char name[256];
@@ -673,6 +956,10 @@ void register_webgl_shim(JSCContext *ctx) {
     ADD_GL_VOID(uniform2fv, gl_uniform2fv);
     ADD_GL_VOID(uniform3fv, gl_uniform3fv);
     ADD_GL_VOID(uniform4fv, gl_uniform4fv);
+    ADD_GL_VOID(uniform1iv, gl_uniform1iv);
+    ADD_GL_VOID(uniform2iv, gl_uniform2iv);
+    ADD_GL_VOID(uniform3iv, gl_uniform3iv);
+    ADD_GL_VOID(uniform4iv, gl_uniform4iv);
     ADD_GL_VOID(uniformMatrix2fv, gl_uniformMatrix2fv);
     ADD_GL_VOID(uniformMatrix3fv, gl_uniformMatrix3fv);
     ADD_GL_VOID(uniformMatrix4fv, gl_uniformMatrix4fv);
@@ -713,6 +1000,20 @@ void register_webgl_shim(JSCContext *ctx) {
     ADD_GL_VOID(drawArrays, gl_drawArrays);
     ADD_GL_VOID(drawElements, gl_drawElements);
 
+    // State (additional)
+    ADD_GL_VAL(isEnabled, gl_isEnabled);
+    ADD_GL_VOID(blendColor, gl_blendColor);
+    ADD_GL_VOID(depthRange, gl_depthRange);
+    ADD_GL_VOID(polygonOffset, gl_polygonOffset);
+    ADD_GL_VOID(sampleCoverage, gl_sampleCoverage);
+    ADD_GL_VOID(stencilFuncSeparate, gl_stencilFuncSeparate);
+    ADD_GL_VOID(stencilMaskSeparate, gl_stencilMaskSeparate);
+    ADD_GL_VOID(stencilOpSeparate, gl_stencilOpSeparate);
+
+    // Copy
+    ADD_GL_VOID(copyTexImage2D, gl_copyTexImage2D);
+    ADD_GL_VOID(copyTexSubImage2D, gl_copyTexSubImage2D);
+
     // Query
     ADD_GL_VAL(getError, gl_getError);
     ADD_GL_VAL(getParameter, gl_getParameter);
@@ -725,6 +1026,21 @@ void register_webgl_shim(JSCContext *ctx) {
     ADD_GL_VOID(hint, gl_hint);
     ADD_GL_VAL(getActiveAttrib, gl_getActiveAttrib);
     ADD_GL_VAL(getActiveUniform, gl_getActiveUniform);
+    ADD_GL_VAL(getBufferParameter, gl_getBufferParameter);
+    ADD_GL_VAL(getTexParameter, gl_getTexParameter);
+    ADD_GL_VAL(getVertexAttrib, gl_getVertexAttrib);
+    ADD_GL_VAL(getVertexAttribOffset, gl_getVertexAttribOffset);
+    ADD_GL_VAL(getUniform, gl_getUniform);
+    ADD_GL_VAL(getShaderSource, gl_getShaderSource);
+    ADD_GL_VAL(getShaderPrecisionFormat, gl_getShaderPrecisionFormat);
+    ADD_GL_VAL(getRenderbufferParameter, gl_getRenderbufferParameter);
+    ADD_GL_VAL(getFramebufferAttachmentParameter, gl_getFramebufferAttachmentParameter);
+    ADD_GL_VAL(isTexture, gl_isTexture);
+    ADD_GL_VAL(isBuffer, gl_isBuffer);
+    ADD_GL_VAL(isFramebuffer, gl_isFramebuffer);
+    ADD_GL_VAL(isRenderbuffer, gl_isRenderbuffer);
+    ADD_GL_VAL(isProgram, gl_isProgram);
+    ADD_GL_VAL(isShader, gl_isShader);
 
     // --- WebGL Constants ---
     // Data types
@@ -890,6 +1206,81 @@ void register_webgl_shim(JSCContext *ctx) {
     // Boolean
     ADD_GL_CONST(TRUE, 1);
     ADD_GL_CONST(FALSE, 0);
+
+    // Additional constants Phaser uses
+    ADD_GL_CONST(CONSTANT_COLOR, 0x8001);
+    ADD_GL_CONST(ONE_MINUS_CONSTANT_COLOR, 0x8002);
+    ADD_GL_CONST(CONSTANT_ALPHA, 0x8003);
+    ADD_GL_CONST(ONE_MINUS_CONSTANT_ALPHA, 0x8004);
+    ADD_GL_CONST(BLEND_COLOR, 0x8005);
+
+    // Pixel storage
+    ADD_GL_CONST(UNPACK_ROW_LENGTH, 0x0CF2);
+
+    // Shader precision
+    ADD_GL_CONST(LOW_FLOAT, 0x8DF0);
+    ADD_GL_CONST(MEDIUM_FLOAT, 0x8DF1);
+    ADD_GL_CONST(HIGH_FLOAT, 0x8DF2);
+    ADD_GL_CONST(LOW_INT, 0x8DF3);
+    ADD_GL_CONST(MEDIUM_INT, 0x8DF4);
+    ADD_GL_CONST(HIGH_INT, 0x8DF5);
+
+    // Additional buffer info
+    ADD_GL_CONST(BUFFER_SIZE, 0x8764);
+    ADD_GL_CONST(BUFFER_USAGE, 0x8765);
+
+    // Vertex attrib
+    ADD_GL_CONST(CURRENT_VERTEX_ATTRIB, 0x8626);
+    ADD_GL_CONST(VERTEX_ATTRIB_ARRAY_ENABLED, 0x8622);
+    ADD_GL_CONST(VERTEX_ATTRIB_ARRAY_SIZE, 0x8623);
+    ADD_GL_CONST(VERTEX_ATTRIB_ARRAY_STRIDE, 0x8624);
+    ADD_GL_CONST(VERTEX_ATTRIB_ARRAY_TYPE, 0x8625);
+    ADD_GL_CONST(VERTEX_ATTRIB_ARRAY_NORMALIZED, 0x886A);
+    ADD_GL_CONST(VERTEX_ATTRIB_ARRAY_BUFFER_BINDING, 0x889F);
+
+    // Renderbuffer info
+    ADD_GL_CONST(RENDERBUFFER_WIDTH, 0x8D42);
+    ADD_GL_CONST(RENDERBUFFER_HEIGHT, 0x8D43);
+    ADD_GL_CONST(RENDERBUFFER_INTERNAL_FORMAT, 0x8D44);
+    ADD_GL_CONST(RENDERBUFFER_RED_SIZE, 0x8D50);
+    ADD_GL_CONST(RENDERBUFFER_GREEN_SIZE, 0x8D51);
+    ADD_GL_CONST(RENDERBUFFER_BLUE_SIZE, 0x8D52);
+    ADD_GL_CONST(RENDERBUFFER_ALPHA_SIZE, 0x8D53);
+    ADD_GL_CONST(RENDERBUFFER_DEPTH_SIZE, 0x8D54);
+    ADD_GL_CONST(RENDERBUFFER_STENCIL_SIZE, 0x8D55);
+
+    // Framebuffer info
+    ADD_GL_CONST(FRAMEBUFFER_ATTACHMENT_OBJECT_TYPE, 0x8CD0);
+    ADD_GL_CONST(FRAMEBUFFER_ATTACHMENT_OBJECT_NAME, 0x8CD1);
+    ADD_GL_CONST(FRAMEBUFFER_ATTACHMENT_TEXTURE_LEVEL, 0x8CD2);
+    ADD_GL_CONST(FRAMEBUFFER_ATTACHMENT_TEXTURE_CUBE_MAP_FACE, 0x8CD3);
+    ADD_GL_CONST(NONE, 0);
+
+    // Hints
+    ADD_GL_CONST(DONT_CARE, 0x1100);
+    ADD_GL_CONST(FASTEST, 0x1101);
+    ADD_GL_CONST(NICEST, 0x1102);
+    ADD_GL_CONST(GENERATE_MIPMAP_HINT, 0x8192);
+
+    // Misc get params
+    ADD_GL_CONST(BLEND_EQUATION, 0x8009);
+    ADD_GL_CONST(BLEND_EQUATION_RGB, 0x8009);
+    ADD_GL_CONST(BLEND_EQUATION_ALPHA, 0x883D);
+    ADD_GL_CONST(BLEND_DST_RGB, 0x80C8);
+    ADD_GL_CONST(BLEND_SRC_RGB, 0x80C9);
+    ADD_GL_CONST(BLEND_DST_ALPHA, 0x80CA);
+    ADD_GL_CONST(BLEND_SRC_ALPHA, 0x80CB);
+
+    ADD_GL_CONST(DEPTH_COMPONENT, 0x1902);
+    ADD_GL_CONST(UNSIGNED_SHORT_4_4_4_4, 0x8033);
+    ADD_GL_CONST(UNSIGNED_SHORT_5_5_5_1, 0x8034);
+    ADD_GL_CONST(UNSIGNED_SHORT_5_6_5, 0x8363);
+    ADD_GL_CONST(DEPTH_COMPONENT16, 0x81A5);
+
+    ADD_GL_CONST(POLYGON_OFFSET_FILL, 0x8037);
+    ADD_GL_CONST(SAMPLE_ALPHA_TO_COVERAGE, 0x809E);
+    ADD_GL_CONST(SAMPLE_COVERAGE, 0x80A0);
+    ADD_GL_CONST(DITHER, 0x0BD0);
 
     // Store and expose
     g_engine.webgl_ctx_obj = gl;

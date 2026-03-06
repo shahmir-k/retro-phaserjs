@@ -277,6 +277,47 @@ void translate_sdl_event(SDL_Event *event) {
             if (event->window.event == SDL_WINDOWEVENT_RESIZED) {
                 g_engine.screen_w = event->window.data1;
                 g_engine.screen_h = event->window.data2;
+                // Fire resize event on window
+                JSCValue *rr = jsc_context_evaluate(g_engine.js_ctx,
+                    "(function(){"
+                    "  window.innerWidth = window.outerWidth = screen.width = screen.availWidth = "
+                    "    document.body.clientWidth = document.documentElement.clientWidth = __canvas.width;"
+                    "  window.innerHeight = window.outerHeight = screen.height = screen.availHeight = "
+                    "    document.body.clientHeight = document.documentElement.clientHeight = __canvas.height;"
+                    "  if (window._eventListeners && window._eventListeners['resize']) {"
+                    "    var e = { type: 'resize' };"
+                    "    window._eventListeners['resize'].forEach(function(cb){ cb(e); });"
+                    "  }"
+                    "})();", -1);
+                if (rr) g_object_unref(rr);
+            }
+            if (event->window.event == SDL_WINDOWEVENT_FOCUS_GAINED) {
+                // Page Visibility: visible
+                JSCValue *vr = jsc_context_evaluate(g_engine.js_ctx,
+                    "(function(){"
+                    "  document.hidden = false;"
+                    "  document.visibilityState = 'visible';"
+                    "  if (document._fireEvent) document._fireEvent('visibilitychange', { type: 'visibilitychange' });"
+                    "  if (document.onvisibilitychange) document.onvisibilitychange({ type: 'visibilitychange' });"
+                    "  if (window._eventListeners && window._eventListeners['focus']) {"
+                    "    window._eventListeners['focus'].forEach(function(cb){ cb({ type: 'focus' }); });"
+                    "  }"
+                    "})();", -1);
+                if (vr) g_object_unref(vr);
+            }
+            if (event->window.event == SDL_WINDOWEVENT_FOCUS_LOST) {
+                // Page Visibility: hidden
+                JSCValue *vr = jsc_context_evaluate(g_engine.js_ctx,
+                    "(function(){"
+                    "  document.hidden = true;"
+                    "  document.visibilityState = 'hidden';"
+                    "  if (document._fireEvent) document._fireEvent('visibilitychange', { type: 'visibilitychange' });"
+                    "  if (document.onvisibilitychange) document.onvisibilitychange({ type: 'visibilitychange' });"
+                    "  if (window._eventListeners && window._eventListeners['blur']) {"
+                    "    window._eventListeners['blur'].forEach(function(cb){ cb({ type: 'blur' }); });"
+                    "  }"
+                    "})();", -1);
+                if (vr) g_object_unref(vr);
             }
             break;
     }

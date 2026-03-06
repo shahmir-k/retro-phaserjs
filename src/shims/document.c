@@ -99,17 +99,24 @@ void register_document_shim(JSCContext *ctx) {
     g_object_unref(doc);
 
     // Add stub methods via JS for convenience
+    // Note: document.addEventListener/removeEventListener are set up in polyfills.js
+    // with a working event listener registry for fullscreenchange, pointerlockchange, etc.
     jsc_context_evaluate(ctx,
         "document.addEventListener = function(){};"
         "document.removeEventListener = function(){};"
         "document.createTextNode = function(t){ return { textContent: t }; };"
-        "document.createDocumentFragment = function(){ return { appendChild: function(){} }; };"
+        "document.createDocumentFragment = function(){ return { appendChild: function(){}, children: [], childNodes: [] }; };"
         "document.body.appendChild = function(el){ return el; };"
         "document.body.removeChild = function(el){ return el; };"
+        "document.body.insertBefore = function(el){ return el; };"
         "document.body.contains = function(){ return true; };"
         "document.body.getBoundingClientRect = function(){ return { left:0, top:0, width: innerWidth, height: innerHeight, x:0, y:0 }; };"
         "document.body.addEventListener = function(){};"
         "document.body.removeEventListener = function(){};"
+        "document.body.clientWidth = innerWidth || 640;"
+        "document.body.clientHeight = innerHeight || 480;"
         "document.head.appendChild = function(el){ return el; };"
+        "document.documentElement.clientWidth = innerWidth || 640;"
+        "document.documentElement.clientHeight = innerHeight || 480;"
         , -1);
 }

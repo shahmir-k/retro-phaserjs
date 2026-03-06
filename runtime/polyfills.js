@@ -445,7 +445,111 @@ SoftCanvas2D.prototype.strokeText = function(text, x, y, maxWidth) {
     this._fillColor = old;
 };
 
-SoftCanvas2D.prototype.drawImage = function() {};
+SoftCanvas2D.prototype.drawImage = function(source) {
+    if (!source) return;
+    this._ensureBuffer();
+    var cw = this.canvas.width || 1;
+    var ch = this.canvas.height || 1;
+
+    // Get source pixel data and dimensions
+    var srcPixels, srcW, srcH;
+    if (source._ctx2d && source._ctx2d._buffer) {
+        // Another canvas
+        srcPixels = source._ctx2d._buffer;
+        srcW = source.width || 0;
+        srcH = source.height || 0;
+    } else if (source._pixelData) {
+        // Image object with pixel data
+        var ab = source._pixelData;
+        srcPixels = (ab instanceof ArrayBuffer) ? new Uint8Array(ab) : ab;
+        srcW = source.width || source.naturalWidth || 0;
+        srcH = source.height || source.naturalHeight || 0;
+    } else {
+        return; // unsupported source
+    }
+    if (!srcPixels || srcW <= 0 || srcH <= 0) return;
+
+    var sx, sy, sw, sh, dx, dy, dw, dh;
+    if (arguments.length === 3) {
+        // drawImage(source, dx, dy)
+        sx = 0; sy = 0; sw = srcW; sh = srcH;
+        dx = arguments[1]; dy = arguments[2]; dw = srcW; dh = srcH;
+    } else if (arguments.length === 5) {
+        // drawImage(source, dx, dy, dw, dh)
+        sx = 0; sy = 0; sw = srcW; sh = srcH;
+        dx = arguments[1]; dy = arguments[2]; dw = arguments[3]; dh = arguments[4];
+    } else if (arguments.length >= 9) {
+        // drawImage(source, sx, sy, sw, sh, dx, dy, dw, dh)
+        sx = arguments[1]; sy = arguments[2]; sw = arguments[3]; sh = arguments[4];
+        dx = arguments[5]; dy = arguments[6]; dw = arguments[7]; dh = arguments[8];
+    } else {
+        return;
+    }
+
+    // No scaling needed
+    if (sw === dw && sh === dh) {
+        var alpha = Math.round(this._globalAlpha * 255);
+        for (var py = 0; py < dh; py++) {
+            var srcY = Math.floor(sy + py);
+            var dstY = Math.floor(dy + py);
+            if (srcY < 0 || srcY >= srcH || dstY < 0 || dstY >= ch) continue;
+            for (var px = 0; px < dw; px++) {
+                var srcX = Math.floor(sx + px);
+                var dstX = Math.floor(dx + px);
+                if (srcX < 0 || srcX >= srcW || dstX < 0 || dstX >= cw) continue;
+                var si = (srcY * srcW + srcX) * 4;
+                var di = (dstY * cw + dstX) * 4;
+                var sa = (srcPixels[si + 3] * alpha / 255) | 0;
+                if (sa === 0) continue;
+                if (sa >= 255) {
+                    this._buffer[di] = srcPixels[si];
+                    this._buffer[di+1] = srcPixels[si+1];
+                    this._buffer[di+2] = srcPixels[si+2];
+                    this._buffer[di+3] = 255;
+                } else {
+                    var inv = 255 - sa;
+                    this._buffer[di]   = (srcPixels[si]*sa + this._buffer[di]*inv + 127) / 255 | 0;
+                    this._buffer[di+1] = (srcPixels[si+1]*sa + this._buffer[di+1]*inv + 127) / 255 | 0;
+                    this._buffer[di+2] = (srcPixels[si+2]*sa + this._buffer[di+2]*inv + 127) / 255 | 0;
+                    this._buffer[di+3] = Math.min(255, this._buffer[di+3] + sa);
+                }
+            }
+        }
+    } else {
+        // Nearest-neighbor scaling
+        var alpha = Math.round(this._globalAlpha * 255);
+        var xRatio = sw / dw;
+        var yRatio = sh / dh;
+        for (var py = 0; py < dh; py++) {
+            var dstY = Math.floor(dy + py);
+            if (dstY < 0 || dstY >= ch) continue;
+            var srcY = Math.floor(sy + py * yRatio);
+            if (srcY < 0 || srcY >= srcH) continue;
+            for (var px = 0; px < dw; px++) {
+                var dstX = Math.floor(dx + px);
+                if (dstX < 0 || dstX >= cw) continue;
+                var srcX = Math.floor(sx + px * xRatio);
+                if (srcX < 0 || srcX >= srcW) continue;
+                var si = (srcY * srcW + srcX) * 4;
+                var di = (dstY * cw + dstX) * 4;
+                var sa = (srcPixels[si + 3] * alpha / 255) | 0;
+                if (sa === 0) continue;
+                if (sa >= 255) {
+                    this._buffer[di] = srcPixels[si];
+                    this._buffer[di+1] = srcPixels[si+1];
+                    this._buffer[di+2] = srcPixels[si+2];
+                    this._buffer[di+3] = 255;
+                } else {
+                    var inv = 255 - sa;
+                    this._buffer[di]   = (srcPixels[si]*sa + this._buffer[di]*inv + 127) / 255 | 0;
+                    this._buffer[di+1] = (srcPixels[si+1]*sa + this._buffer[di+1]*inv + 127) / 255 | 0;
+                    this._buffer[di+2] = (srcPixels[si+2]*sa + this._buffer[di+2]*inv + 127) / 255 | 0;
+                    this._buffer[di+3] = Math.min(255, this._buffer[di+3] + sa);
+                }
+            }
+        }
+    }
+};
 
 SoftCanvas2D.prototype.save = function() {
     this._stack.push({
@@ -1270,5 +1374,105 @@ window.confirm = window.confirm || function(msg) { console.log('[confirm] ' + ms
 window.prompt = window.prompt || function(msg) { console.log('[prompt] ' + msg); return null; };
 window.focus = window.focus || function() {};
 window.blur = window.blur || function() {};
+
+// --- Document event listener system ---
+(function() {
+    var _docListeners = {};
+    document.addEventListener = function(type, cb, opts) {
+        if (!_docListeners[type]) _docListeners[type] = [];
+        if (_docListeners[type].indexOf(cb) < 0) _docListeners[type].push(cb);
+    };
+    document.removeEventListener = function(type, cb) {
+        if (!_docListeners[type]) return;
+        var idx = _docListeners[type].indexOf(cb);
+        if (idx >= 0) _docListeners[type].splice(idx, 1);
+    };
+    document._fireEvent = function(type, evt) {
+        evt = evt || { type: type };
+        var cbs = _docListeners[type];
+        if (cbs) for (var i = 0; i < cbs.length; i++) cbs[i](evt);
+    };
+})();
+
+// --- Fullscreen API ---
+document.fullscreenEnabled = true;
+document.fullscreenElement = null;
+document.mozFullScreenEnabled = true;
+document.webkitFullscreenEnabled = true;
+document.exitFullscreen = function() {
+    document.fullscreenElement = null;
+    document.webkitFullscreenElement = null;
+    document._fireEvent('fullscreenchange');
+    return Promise.resolve();
+};
+document.webkitExitFullscreen = document.exitFullscreen;
+document.mozCancelFullScreen = document.exitFullscreen;
+
+// --- Pointer Lock API ---
+document.pointerLockElement = null;
+document.exitPointerLock = function() {
+    document.pointerLockElement = null;
+    document._fireEvent('pointerlockchange');
+};
+document.mozExitPointerLock = document.exitPointerLock;
+
+// --- Page Visibility API ---
+// document.hidden and visibilityState are set in C; these handle the onfoo callbacks
+document.onvisibilitychange = null;
+document.onfullscreenchange = null;
+
+// --- Screen orientation ---
+if (typeof screen !== 'undefined') {
+    screen.orientation = screen.orientation || {
+        type: 'landscape-primary', angle: 0,
+        addEventListener: function() {}, removeEventListener: function() {},
+        lock: function() { return Promise.resolve(); }, unlock: function() {}
+    };
+}
+window.orientation = 0;
+
+// --- Fullscreen/PointerLock on canvas elements ---
+// Patch __createCanvas to add requestFullscreen and requestPointerLock
+(function() {
+    var _origCreateCanvas = window.__createCanvas;
+    window.__createCanvas = function() {
+        var canvas = _origCreateCanvas();
+        canvas.requestFullscreen = function() {
+            document.fullscreenElement = this;
+            document.webkitFullscreenElement = this;
+            document._fireEvent('fullscreenchange');
+            return Promise.resolve();
+        };
+        canvas.webkitRequestFullscreen = canvas.requestFullscreen;
+        canvas.mozRequestFullScreen = canvas.requestFullscreen;
+        canvas.requestPointerLock = function() {
+            document.pointerLockElement = this;
+            document._fireEvent('pointerlockchange');
+        };
+        canvas.mozRequestPointerLock = canvas.requestPointerLock;
+        return canvas;
+    };
+})();
+
+// Patch the native __canvas too
+if (typeof __canvas !== 'undefined') {
+    __canvas.requestFullscreen = function() {
+        document.fullscreenElement = this;
+        document.webkitFullscreenElement = this;
+        document._fireEvent('fullscreenchange');
+        return Promise.resolve();
+    };
+    __canvas.webkitRequestFullscreen = __canvas.requestFullscreen;
+    __canvas.mozRequestFullScreen = __canvas.requestFullscreen;
+    __canvas.requestPointerLock = function() {
+        document.pointerLockElement = this;
+        document._fireEvent('pointerlockchange');
+    };
+    __canvas.mozRequestPointerLock = __canvas.requestPointerLock;
+}
+
+// --- HTMLCanvasElement prototype ---
+window.HTMLCanvasElement = window.HTMLCanvasElement || function() {};
+HTMLCanvasElement.prototype = HTMLCanvasElement.prototype || {};
 
 console.log('[PhaserQuest] Polyfills loaded');
