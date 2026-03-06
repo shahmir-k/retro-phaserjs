@@ -672,6 +672,13 @@ window.__createCanvas = function() {
     canvas.parentNode = canvas.parentElement;
     canvas.ownerDocument = typeof document !== 'undefined' ? document : null;
     canvas.toDataURL = function() { return 'data:image/png;base64,'; };
+    canvas.toBlob = function(cb, type, quality) {
+        var self = this;
+        setTimeout(function() {
+            var blob = new Blob([], { type: type || 'image/png' });
+            if (cb) cb(blob);
+        }, 0);
+    };
 
     // Expose 2D canvas pixel data for texImage2D upload
     Object.defineProperty(canvas, '_pixelData', {
@@ -1339,6 +1346,19 @@ if (typeof localStorage === 'undefined') {
         clear: function() { _storage = {}; },
         get length() { return Object.keys(_storage).length; },
         key: function(i) { return Object.keys(_storage)[i] || null; }
+    };
+}
+
+// --- sessionStorage stub ---
+if (typeof sessionStorage === 'undefined') {
+    var _sessionStore = {};
+    window.sessionStorage = {
+        getItem: function(k) { return _sessionStore.hasOwnProperty(k) ? _sessionStore[k] : null; },
+        setItem: function(k, v) { _sessionStore[k] = String(v); },
+        removeItem: function(k) { delete _sessionStore[k]; },
+        clear: function() { _sessionStore = {}; },
+        get length() { return Object.keys(_sessionStore).length; },
+        key: function(i) { return Object.keys(_sessionStore)[i] || null; }
     };
 }
 

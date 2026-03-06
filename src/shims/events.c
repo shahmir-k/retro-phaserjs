@@ -244,6 +244,10 @@ void translate_sdl_event(SDL_Event *event) {
         case SDL_MOUSEBUTTONDOWN:
             fire_mouse_event("pointerdown", event->button.x, event->button.y, event->button.button - 1);
             fire_mouse_event("mousedown", event->button.x, event->button.y, event->button.button - 1);
+            // Right-click → fire contextmenu event (Phaser prevents default on this)
+            if (event->button.button == 3) {
+                fire_mouse_event("contextmenu", event->button.x, event->button.y, 2);
+            }
             break;
         case SDL_MOUSEBUTTONUP:
             fire_mouse_event("pointerup", event->button.x, event->button.y, event->button.button - 1);
@@ -261,6 +265,32 @@ void translate_sdl_event(SDL_Event *event) {
             fire_touch_as_pointer("pointermove", event->tfinger.x, event->tfinger.y);
             fire_touch_as_pointer("mousemove", event->tfinger.x, event->tfinger.y);
             break;
+        case SDL_MOUSEWHEEL: {
+            // Translate mouse wheel to 'wheel' event
+            JSCContext *ctx = g_engine.js_ctx;
+            int dx = event->wheel.x * 100;  // scale to match browser deltaX
+            int dy = event->wheel.y * -100; // SDL Y is inverted vs DOM
+            char js[1024];
+            snprintf(js, sizeof(js),
+                "(function() {"
+                "  var e = { type:'wheel', deltaX:%d, deltaY:%d, deltaZ:0, deltaMode:0,"
+                "    clientX:0, clientY:0, ctrlKey:false, shiftKey:false, altKey:false,"
+                "    preventDefault:function(){}, stopPropagation:function(){} };"
+                "  if (typeof _primaryCanvas !== 'undefined' && _primaryCanvas && _primaryCanvas._listeners && _primaryCanvas._listeners['wheel']) {"
+                "    _primaryCanvas._listeners['wheel'].slice().forEach(function(cb){ cb(e); });"
+                "  }"
+                "  if (typeof __canvas !== 'undefined' && __canvas._listeners && __canvas._listeners['wheel']) {"
+                "    __canvas._listeners['wheel'].slice().forEach(function(cb){ cb(e); });"
+                "  }"
+                "  if (window._eventListeners && window._eventListeners['wheel']) {"
+                "    window._eventListeners['wheel'].slice().forEach(function(cb){ cb(e); });"
+                "  }"
+                "})();",
+                dx, dy);
+            JSCValue *r = jsc_context_evaluate(ctx, js, -1);
+            if (r) g_object_unref(r);
+            break;
+        }
         case SDL_JOYBUTTONDOWN:
             translate_joy_button(event->jbutton.button, "keydown");
             break;
