@@ -81,19 +81,37 @@ static JSCValue *native_audio_load_chunk(GPtrArray *args, gpointer user_data) {
     return jsc_value_new_number(ctx, id);
 }
 
-// __audioPlayChunk(id, volume, loop)
-static void native_audio_play_chunk(GPtrArray *args, gpointer user_data) {
-    if (args->len < 1) return;
+// __audioPlayChunk(id, volume, loop) -> channel or -1
+static JSCValue *native_audio_play_chunk(GPtrArray *args, gpointer user_data) {
+    JSCContext *ctx = jsc_context_get_current();
+    if (args->len < 1) return jsc_value_new_number(ctx, -1);
     int id = jsc_value_to_int32(g_ptr_array_index(args, 0));
     double volume = args->len > 1 ? jsc_value_to_double(g_ptr_array_index(args, 1)) : 1.0;
     int loop = args->len > 2 ? jsc_value_to_int32(g_ptr_array_index(args, 2)) : 0;
 
+    if (!audio_table) return jsc_value_new_number(ctx, -1);
     Mix_Chunk *chunk = g_hash_table_lookup(audio_table, GINT_TO_POINTER(id));
-    if (!chunk) return;
+    if (!chunk) return jsc_value_new_number(ctx, -1);
 
     int vol = (int)(volume * MIX_MAX_VOLUME);
     Mix_VolumeChunk(chunk, vol);
-    Mix_PlayChannel(-1, chunk, loop ? -1 : 0);
+    int channel = Mix_PlayChannel(-1, chunk, loop ? -1 : 0);
+    return jsc_value_new_number(ctx, channel);
+}
+
+// __audioStopChannel(channel)
+static void native_audio_stop_channel(GPtrArray *args, gpointer user_data) {
+    if (args->len < 1) return;
+    int channel = jsc_value_to_int32(g_ptr_array_index(args, 0));
+    if (channel >= 0) Mix_HaltChannel(channel);
+}
+
+// __audioSetChannelVolume(channel, volume)
+static void native_audio_set_volume(GPtrArray *args, gpointer user_data) {
+    if (args->len < 2) return;
+    int channel = jsc_value_to_int32(g_ptr_array_index(args, 0));
+    double volume = jsc_value_to_double(g_ptr_array_index(args, 1));
+    if (channel >= 0) Mix_Volume(channel, (int)(volume * MIX_MAX_VOLUME));
 }
 
 void register_audio_shim(JSCContext *ctx) {
@@ -104,9 +122,19 @@ void register_audio_shim(JSCContext *ctx) {
     g_object_unref(load_fn);
 
     JSCValue *play_fn = jsc_value_new_function_variadic(ctx, "__audioPlayChunk",
-        G_CALLBACK(native_audio_play_chunk), NULL, NULL, G_TYPE_NONE);
+        G_CALLBACK(native_audio_play_chunk), NULL, NULL, JSC_TYPE_VALUE);
     jsc_context_set_value(ctx, "__audioPlayChunk", play_fn);
     g_object_unref(play_fn);
+
+    JSCValue *stop_fn = jsc_value_new_function_variadic(ctx, "__audioStopChannel",
+        G_CALLBACK(native_audio_stop_channel), NULL, NULL, G_TYPE_NONE);
+    jsc_context_set_value(ctx, "__audioStopChannel", stop_fn);
+    g_object_unref(stop_fn);
+
+    JSCValue *vol_fn = jsc_value_new_function_variadic(ctx, "__audioSetChannelVolume",
+        G_CALLBACK(native_audio_set_volume), NULL, NULL, G_TYPE_NONE);
+    jsc_context_set_value(ctx, "__audioSetChannelVolume", vol_fn);
+    g_object_unref(vol_fn);
 
     JSCValue *buf_fn = jsc_value_new_function_variadic(ctx, "__audioLoadFromBuffer",
         G_CALLBACK(native_audio_load_from_buffer), NULL, NULL, JSC_TYPE_VALUE);
@@ -121,21 +149,30 @@ void register_audio_shim(JSCContext *ctx) {
         "  this.sampleRate = 44100;"
         "  this.destination = { _type: 'destination' };"
         "  this.createGain = function() {"
-        "    return { gain: { value: 1, setValueAtTime: function(){} },"
-        "             connect: function(){}, disconnect: function(){} };"
+        "    var g = { value: 1,"
+        "      setValueAtTime: function(v) { this.value = v; },"
+        "      linearRampToValueAtTime: function(v) { this.value = v; },"
+        "      exponentialRampToValueAtTime: function(v) { this.value = v; },"
+        "      setTargetAtTime: function(v) { this.value = v; },"
+        "      cancelScheduledValues: function() {}"
+        "    };"
+        "    return { gain: g, connect: function(){ return this; }, disconnect: function(){} };"
         "  };"
         "  this.createBufferSource = function() {"
         "    var src = {"
         "      buffer: null, loop: false, loopStart: 0, loopEnd: 0,"
-        "      _volume: 1.0,"
+        "      _volume: 1.0, _channel: -1,"
+        "      playbackRate: { value: 1 },"
         "      connect: function(dest) { if (dest && dest.gain) this._volume = dest.gain.value; return this; },"
         "      disconnect: function() {},"
         "      start: function() {"
         "        if (this.buffer && this.buffer._nativeId) {"
-        "          __audioPlayChunk(this.buffer._nativeId, this._volume, this.loop ? 1 : 0);"
+        "          this._channel = __audioPlayChunk(this.buffer._nativeId, this._volume, this.loop ? 1 : 0);"
         "        }"
         "      },"
-        "      stop: function() {},"
+        "      stop: function() {"
+        "        if (this._channel >= 0) { __audioStopChannel(this._channel); this._channel = -1; }"
+        "      },"
         "      addEventListener: function() {},"
         "      removeEventListener: function() {},"
         "      onended: null"

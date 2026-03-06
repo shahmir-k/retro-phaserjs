@@ -32,7 +32,7 @@ void register_window_shim(JSCContext *ctx) {
     jsc_value_object_set_property(nav, "language", lang);
     jsc_value_object_set_property(nav, "platform", plat);
     jsc_value_object_set_property(nav, "hardwareConcurrency", gc_val);
-    jsc_value_object_set_property(nav, "maxTouchPoints", jsc_value_new_number(ctx, 0));
+    jsc_value_object_set_property(nav, "maxTouchPoints", jsc_value_new_number(ctx, 1));
     jsc_context_set_value(ctx, "navigator", nav);
     g_object_unref(ua);
     g_object_unref(lang);

@@ -138,6 +138,97 @@ static void fire_mouse_event(const char *type, int x, int y, int button) {
     if (r) g_object_unref(r);
 }
 
+// --- Gamepad/Joystick → Keyboard mapping ---
+// Track axis/hat state to generate key down/up transitions
+static bool joy_left = false, joy_right = false;
+static bool joy_up = false, joy_down = false;
+
+#define JOY_AXIS_THRESHOLD 16000
+
+static void inject_key_event(const char *type, SDL_Keycode sym, SDL_Scancode sc) {
+    SDL_KeyboardEvent key = {0};
+    key.keysym.sym = sym;
+    key.keysym.scancode = sc;
+    key.repeat = 0;
+    fire_key_event(type, &key);
+}
+
+// Map joystick buttons to keyboard keys
+static void translate_joy_button(int button, const char *type) {
+    switch (button) {
+        case 0: // A/South → Space (action/confirm)
+            inject_key_event(type, SDLK_SPACE, SDL_SCANCODE_SPACE);
+            break;
+        case 1: // B/East → Escape (back/cancel)
+            inject_key_event(type, SDLK_ESCAPE, SDL_SCANCODE_ESCAPE);
+            break;
+        case 2: // X/West → z
+            inject_key_event(type, SDLK_z, SDL_SCANCODE_Z);
+            break;
+        case 3: // Y/North → x
+            inject_key_event(type, SDLK_x, SDL_SCANCODE_X);
+            break;
+        case 4: // L1 → Shift
+            inject_key_event(type, SDLK_LSHIFT, SDL_SCANCODE_LSHIFT);
+            break;
+        case 5: // R1 → Ctrl
+            inject_key_event(type, SDLK_LCTRL, SDL_SCANCODE_LCTRL);
+            break;
+        case 6: // Select → Tab
+            inject_key_event(type, SDLK_TAB, SDL_SCANCODE_TAB);
+            break;
+        case 7: // Start → Enter
+            inject_key_event(type, SDLK_RETURN, SDL_SCANCODE_RETURN);
+            break;
+    }
+}
+
+static void translate_joy_axis(int axis, int value) {
+    if (axis == 0) { // X axis
+        bool left = value < -JOY_AXIS_THRESHOLD;
+        bool right = value > JOY_AXIS_THRESHOLD;
+        if (left != joy_left) {
+            inject_key_event(left ? "keydown" : "keyup", SDLK_LEFT, SDL_SCANCODE_LEFT);
+            joy_left = left;
+        }
+        if (right != joy_right) {
+            inject_key_event(right ? "keydown" : "keyup", SDLK_RIGHT, SDL_SCANCODE_RIGHT);
+            joy_right = right;
+        }
+    } else if (axis == 1) { // Y axis
+        bool up = value < -JOY_AXIS_THRESHOLD;
+        bool down = value > JOY_AXIS_THRESHOLD;
+        if (up != joy_up) {
+            inject_key_event(up ? "keydown" : "keyup", SDLK_UP, SDL_SCANCODE_UP);
+            joy_up = up;
+        }
+        if (down != joy_down) {
+            inject_key_event(down ? "keydown" : "keyup", SDLK_DOWN, SDL_SCANCODE_DOWN);
+            joy_down = down;
+        }
+    }
+}
+
+static void translate_joy_hat(int value) {
+    bool up    = (value & SDL_HAT_UP) != 0;
+    bool down  = (value & SDL_HAT_DOWN) != 0;
+    bool left  = (value & SDL_HAT_LEFT) != 0;
+    bool right = (value & SDL_HAT_RIGHT) != 0;
+
+    if (up != joy_up)    { inject_key_event(up ? "keydown" : "keyup", SDLK_UP, SDL_SCANCODE_UP); joy_up = up; }
+    if (down != joy_down) { inject_key_event(down ? "keydown" : "keyup", SDLK_DOWN, SDL_SCANCODE_DOWN); joy_down = down; }
+    if (left != joy_left) { inject_key_event(left ? "keydown" : "keyup", SDLK_LEFT, SDL_SCANCODE_LEFT); joy_left = left; }
+    if (right != joy_right) { inject_key_event(right ? "keydown" : "keyup", SDLK_RIGHT, SDL_SCANCODE_RIGHT); joy_right = right; }
+}
+
+// --- Touch → Pointer events ---
+static void fire_touch_as_pointer(const char *type, float x, float y) {
+    // Convert normalized touch coords to screen coords
+    int px = (int)(x * g_engine.screen_w);
+    int py = (int)(y * g_engine.screen_h);
+    fire_mouse_event(type, px, py, 0);
+}
+
 void translate_sdl_event(SDL_Event *event) {
     switch (event->type) {
         case SDL_KEYDOWN:
@@ -157,6 +248,30 @@ void translate_sdl_event(SDL_Event *event) {
         case SDL_MOUSEBUTTONUP:
             fire_mouse_event("pointerup", event->button.x, event->button.y, event->button.button - 1);
             fire_mouse_event("mouseup", event->button.x, event->button.y, event->button.button - 1);
+            break;
+        case SDL_FINGERDOWN:
+            fire_touch_as_pointer("pointerdown", event->tfinger.x, event->tfinger.y);
+            fire_touch_as_pointer("mousedown", event->tfinger.x, event->tfinger.y);
+            break;
+        case SDL_FINGERUP:
+            fire_touch_as_pointer("pointerup", event->tfinger.x, event->tfinger.y);
+            fire_touch_as_pointer("mouseup", event->tfinger.x, event->tfinger.y);
+            break;
+        case SDL_FINGERMOTION:
+            fire_touch_as_pointer("pointermove", event->tfinger.x, event->tfinger.y);
+            fire_touch_as_pointer("mousemove", event->tfinger.x, event->tfinger.y);
+            break;
+        case SDL_JOYBUTTONDOWN:
+            translate_joy_button(event->jbutton.button, "keydown");
+            break;
+        case SDL_JOYBUTTONUP:
+            translate_joy_button(event->jbutton.button, "keyup");
+            break;
+        case SDL_JOYAXISMOTION:
+            translate_joy_axis(event->jaxis.axis, event->jaxis.value);
+            break;
+        case SDL_JOYHATMOTION:
+            translate_joy_hat(event->jhat.value);
             break;
         case SDL_WINDOWEVENT:
             if (event->window.event == SDL_WINDOWEVENT_RESIZED) {

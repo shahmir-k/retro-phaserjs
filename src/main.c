@@ -99,17 +99,25 @@ static void eval_file(JSCContext *ctx, const char *path) {
 
 int main(int argc, char *argv[]) {
     if (argc < 2) {
-        fprintf(stderr, "Usage: %s <game_dir_or_js_file> [width height]\n", argv[0]);
+        fprintf(stderr, "Usage: %s <game_dir_or_js_file> [width height] [--fullscreen]\n", argv[0]);
         return 1;
     }
 
     int width = 640, height = 480;
-    if (argc >= 4) {
-        width = atoi(argv[2]);
-        height = atoi(argv[3]);
-    }
+    bool fullscreen = false;
 
+    // Parse arguments
     const char *input = argv[1];
+    for (int i = 2; i < argc; i++) {
+        if (strcmp(argv[i], "--fullscreen") == 0 || strcmp(argv[i], "-f") == 0) {
+            fullscreen = true;
+        } else if (i == 2 && atoi(argv[i]) > 0) {
+            width = atoi(argv[i]);
+            if (i + 1 < argc && atoi(argv[i+1]) > 0) {
+                height = atoi(argv[++i]);
+            }
+        }
+    }
     char *game_dir = NULL;
     bool is_html = false;
     bool is_js = false;
@@ -132,7 +140,7 @@ int main(int argc, char *argv[]) {
         is_html = true;
     }
 
-    engine_init(width, height, game_dir);
+    engine_init(width, height, game_dir, fullscreen);
 
     // Load polyfills
     eval_file(g_engine.js_ctx, "runtime/polyfills.js");
@@ -188,6 +196,13 @@ int main(int argc, char *argv[]) {
             if (ev.type == SDL_QUIT) {
                 g_engine.running = false;
                 break;
+            }
+            // F11 toggles fullscreen
+            if (ev.type == SDL_KEYDOWN && ev.key.keysym.sym == SDLK_F11) {
+                Uint32 flags = SDL_GetWindowFlags(g_engine.window);
+                SDL_SetWindowFullscreen(g_engine.window,
+                    (flags & SDL_WINDOW_FULLSCREEN_DESKTOP) ? 0 : SDL_WINDOW_FULLSCREEN_DESKTOP);
+                continue;
             }
             translate_sdl_event(&ev);
         }

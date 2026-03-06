@@ -61,7 +61,7 @@ typedef struct {
 extern Engine g_engine;
 
 // Engine lifecycle
-void engine_init(int screen_w, int screen_h, const char *game_dir);
+void engine_init(int screen_w, int screen_h, const char *game_dir, bool fullscreen);
 void engine_shutdown(void);
 
 // Shim registration

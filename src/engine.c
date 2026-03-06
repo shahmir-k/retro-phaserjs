@@ -15,7 +15,7 @@ static void js_exception_handler(JSCContext *ctx, JSCException *exception, gpoin
     }
 }
 
-void engine_init(int screen_w, int screen_h, const char *game_dir) {
+void engine_init(int screen_w, int screen_h, const char *game_dir, bool fullscreen) {
     Engine *e = &g_engine;
     e->screen_w = screen_w;
     e->screen_h = screen_h;
@@ -39,10 +39,13 @@ void engine_init(int screen_w, int screen_h, const char *game_dir) {
     SDL_GL_SetAttribute(SDL_GL_DEPTH_SIZE, 0);
     SDL_GL_SetAttribute(SDL_GL_STENCIL_SIZE, 8);
 
+    Uint32 win_flags = SDL_WINDOW_OPENGL | SDL_WINDOW_SHOWN;
+    if (fullscreen) win_flags |= SDL_WINDOW_FULLSCREEN_DESKTOP;
+
     e->window = SDL_CreateWindow("PhaserQuest",
         SDL_WINDOWPOS_CENTERED, SDL_WINDOWPOS_CENTERED,
         screen_w, screen_h,
-        SDL_WINDOW_OPENGL | SDL_WINDOW_SHOWN);
+        win_flags);
     if (!e->window) {
         fprintf(stderr, "SDL_CreateWindow failed: %s\n", SDL_GetError());
         exit(1);

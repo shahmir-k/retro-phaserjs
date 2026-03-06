@@ -1018,4 +1018,30 @@ if (typeof localStorage === 'undefined') {
     };
 }
 
+// --- navigator stubs ---
+if (typeof navigator !== 'undefined') {
+    navigator.getGamepads = navigator.getGamepads || function() { return []; };
+    navigator.vibrate = navigator.vibrate || function() { return true; };
+    navigator.clipboard = navigator.clipboard || {
+        writeText: function() { return Promise.resolve(); },
+        readText: function() { return Promise.resolve(''); }
+    };
+}
+
+// --- document.createElement video canPlayType ---
+// Phaser checks video.canPlayType for device detection
+if (typeof document !== 'undefined') {
+    var _origCreate = document.createElement;
+    document.createElement = function(tag) {
+        var el = _origCreate(tag);
+        if (tag.toLowerCase() === 'video' && !el.canPlayType) {
+            el.canPlayType = function(mime) { return ''; };
+            el.play = function() { return Promise.resolve(); };
+            el.pause = function() {};
+            el.load = function() {};
+        }
+        return el;
+    };
+}
+
 console.log('[PhaserQuest] Polyfills loaded');
