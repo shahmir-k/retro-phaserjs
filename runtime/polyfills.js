@@ -1419,22 +1419,33 @@ document.fullscreenEnabled = true;
 document.fullscreenElement = null;
 document.mozFullScreenEnabled = true;
 document.webkitFullscreenEnabled = true;
+document.msFullscreenEnabled = true;
+document.mozFullScreenElement = null;
+document.msFullscreenElement = null;
 document.exitFullscreen = function() {
     document.fullscreenElement = null;
     document.webkitFullscreenElement = null;
+    document.mozFullScreenElement = null;
+    document.msFullscreenElement = null;
     document._fireEvent('fullscreenchange');
     return Promise.resolve();
 };
 document.webkitExitFullscreen = document.exitFullscreen;
 document.mozCancelFullScreen = document.exitFullscreen;
+document.msExitFullscreen = document.exitFullscreen;
 
 // --- Pointer Lock API ---
 document.pointerLockElement = null;
+document.mozPointerLockElement = null;
+document.webkitPointerLockElement = null;
 document.exitPointerLock = function() {
     document.pointerLockElement = null;
+    document.mozPointerLockElement = null;
+    document.webkitPointerLockElement = null;
     document._fireEvent('pointerlockchange');
 };
 document.mozExitPointerLock = document.exitPointerLock;
+document.webkitExitPointerLock = document.exitPointerLock;
 
 // --- Page Visibility API ---
 // document.hidden and visibilityState are set in C; these handle the onfoo callbacks
@@ -1460,16 +1471,22 @@ window.orientation = 0;
         canvas.requestFullscreen = function() {
             document.fullscreenElement = this;
             document.webkitFullscreenElement = this;
+            document.mozFullScreenElement = this;
+            document.msFullscreenElement = this;
             document._fireEvent('fullscreenchange');
             return Promise.resolve();
         };
         canvas.webkitRequestFullscreen = canvas.requestFullscreen;
         canvas.mozRequestFullScreen = canvas.requestFullscreen;
+        canvas.msRequestFullscreen = canvas.requestFullscreen;
         canvas.requestPointerLock = function() {
             document.pointerLockElement = this;
+            document.mozPointerLockElement = this;
+            document.webkitPointerLockElement = this;
             document._fireEvent('pointerlockchange');
         };
         canvas.mozRequestPointerLock = canvas.requestPointerLock;
+        canvas.webkitRequestPointerLock = canvas.requestPointerLock;
         return canvas;
     };
 })();
@@ -1479,16 +1496,22 @@ if (typeof __canvas !== 'undefined') {
     __canvas.requestFullscreen = function() {
         document.fullscreenElement = this;
         document.webkitFullscreenElement = this;
+        document.mozFullScreenElement = this;
+        document.msFullscreenElement = this;
         document._fireEvent('fullscreenchange');
         return Promise.resolve();
     };
     __canvas.webkitRequestFullscreen = __canvas.requestFullscreen;
     __canvas.mozRequestFullScreen = __canvas.requestFullscreen;
+    __canvas.msRequestFullscreen = __canvas.requestFullscreen;
     __canvas.requestPointerLock = function() {
         document.pointerLockElement = this;
+        document.mozPointerLockElement = this;
+        document.webkitPointerLockElement = this;
         document._fireEvent('pointerlockchange');
     };
     __canvas.mozRequestPointerLock = __canvas.requestPointerLock;
+    __canvas.webkitRequestPointerLock = __canvas.requestPointerLock;
 }
 
 // --- HTMLCanvasElement prototype ---
