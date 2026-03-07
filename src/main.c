@@ -143,7 +143,12 @@ int main(int argc, char *argv[]) {
         is_html = true;
     }
 
-    engine_init(width, height, game_dir, fullscreen);
+    // Derive game name from directory name
+    char *dir_copy = strdup(game_dir);
+    const char *game_name = basename(dir_copy);
+
+    engine_init(width, height, game_dir, game_name, fullscreen);
+    free(dir_copy);
 
     // Load polyfills
     eval_file(g_engine.js_ctx, "runtime/polyfills.js");
