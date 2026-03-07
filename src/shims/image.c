@@ -1,8 +1,14 @@
 #include "engine.h"
 #include <string.h>
+#include <math.h>
 
 #define STB_IMAGE_IMPLEMENTATION
 #include "stb_image.h"
+
+#define NANOSVG_IMPLEMENTATION
+#include "nanosvg.h"
+#define NANOSVGRAST_IMPLEMENTATION
+#include "nanosvgrast.h"
 
 typedef struct {
     int width;
@@ -14,6 +20,45 @@ typedef struct {
 
 static GHashTable *image_table = NULL;
 static int next_image_id = 1;
+
+// Rasterize SVG data to RGBA pixels. Returns NULL on failure.
+static uint8_t *rasterize_svg(const char *data, size_t len, int *out_w, int *out_h) {
+    // nanosvgParse needs a mutable, null-terminated string
+    char *copy = malloc(len + 1);
+    memcpy(copy, data, len);
+    copy[len] = '\0';
+
+    NSVGimage *svg = nsvgParse(copy, "px", 96.0f);
+    free(copy);
+    if (!svg) return NULL;
+
+    int w = (int)ceilf(svg->width);
+    int h = (int)ceilf(svg->height);
+    if (w <= 0 || h <= 0) { nsvgDelete(svg); return NULL; }
+
+    // Scale up small SVGs (e.g., 24x24 viewBox icons) to reasonable texture size
+    float scale = 1.0f;
+    if (w < 64 || h < 64) {
+        float s = 64.0f / fminf(w, h);
+        scale = s;
+        w = (int)ceilf(svg->width * scale);
+        h = (int)ceilf(svg->height * scale);
+    }
+
+    uint8_t *pixels = malloc(w * h * 4);
+    if (!pixels) { nsvgDelete(svg); return NULL; }
+    memset(pixels, 0, w * h * 4);
+
+    NSVGrasterizer *rast = nsvgCreateRasterizer();
+    nsvgRasterize(rast, svg, 0, 0, scale, pixels, w, h, w * 4);
+    nsvgDeleteRasterizer(rast);
+    nsvgDelete(svg);
+
+    *out_w = w;
+    *out_h = h;
+    printf("[Image] Rasterized SVG: %dx%d (scale=%.1f)\n", w, h, scale);
+    return pixels;
+}
 
 static void native_image_free(gpointer data) {
     NativeImage *img = (NativeImage *)data;
@@ -73,9 +118,38 @@ static void native_image_load(GPtrArray *args, gpointer user_data) {
     NativeImage *img = g_hash_table_lookup(image_table, GINT_TO_POINTER(id));
     if (!img) { free(path); return; }
 
-    // Load with stb_image
+    // Load with stb_image, fall back to nanosvg for .svg files
     int w, h, channels;
-    uint8_t *pixels = stbi_load(path, &w, &h, &channels, 4); // force RGBA
+    uint8_t *pixels = stbi_load(path, &w, &h, &channels, 4);
+
+    if (!pixels) {
+        // Try SVG: read file and rasterize
+        size_t plen = strlen(path);
+        bool is_svg = (plen > 4 && strcasecmp(path + plen - 4, ".svg") == 0);
+        if (!is_svg) {
+            // Peek at file header
+            FILE *f = fopen(path, "rb");
+            if (f) {
+                char hdr[5] = {0};
+                fread(hdr, 1, 4, f);
+                fclose(f);
+                is_svg = (memcmp(hdr, "<svg", 4) == 0 || memcmp(hdr, "<?xm", 4) == 0);
+            }
+        }
+        if (is_svg) {
+            FILE *f = fopen(path, "rb");
+            if (f) {
+                fseek(f, 0, SEEK_END);
+                long sz = ftell(f);
+                fseek(f, 0, SEEK_SET);
+                char *data = malloc(sz);
+                fread(data, 1, sz, f);
+                fclose(f);
+                pixels = rasterize_svg(data, sz, &w, &h);
+                free(data);
+            }
+        }
+    }
 
     if (pixels) {
         img->width = w;
@@ -161,6 +235,12 @@ static void native_image_load_buffer(GPtrArray *args, gpointer user_data) {
 
     int w, h, channels;
     uint8_t *pixels = stbi_load_from_memory(buf_data, buf_len, &w, &h, &channels, 4);
+
+    // SVG fallback: if stb_image fails and buffer looks like SVG, rasterize it
+    if (!pixels && buf_len >= 4 &&
+        (memcmp(buf_data, "<svg", 4) == 0 || memcmp(buf_data, "<?xm", 4) == 0)) {
+        pixels = rasterize_svg((const char *)buf_data, buf_len, &w, &h);
+    }
 
     if (pixels) {
         img->width = w;
