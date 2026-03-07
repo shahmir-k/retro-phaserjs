@@ -612,13 +612,45 @@ window.__createCanvas = function() {
     var canvas = {
         tagName: 'CANVAS',
         nodeName: 'CANVAS',
-        width: 1,
-        height: 1,
+        _width: 1,
+        _height: 1,
         style: {},
         _listeners: {},
         _ctx2d: null,
-        _isPrimary: false
+        _isPrimary: false,
+        _glCtx: null
     };
+
+    // width/height setters: when the primary WebGL canvas is resized,
+    // resize the actual SDL window + GL framebuffer to match
+    Object.defineProperty(canvas, 'width', {
+        get: function() { return this._width; },
+        set: function(v) {
+            v = v | 0;
+            if (v <= 0) v = 1;
+            this._width = v;
+            if (this._isPrimary && typeof __resizeWindow === 'function') {
+                __resizeWindow(v, this._height);
+                if (this._glCtx) {
+                    this._glCtx.drawingBufferWidth = v;
+                }
+            }
+        }
+    });
+    Object.defineProperty(canvas, 'height', {
+        get: function() { return this._height; },
+        set: function(v) {
+            v = v | 0;
+            if (v <= 0) v = 1;
+            this._height = v;
+            if (this._isPrimary && typeof __resizeWindow === 'function') {
+                __resizeWindow(this._width, v);
+                if (this._glCtx) {
+                    this._glCtx.drawingBufferHeight = v;
+                }
+            }
+        }
+    });
 
     canvas.getContext = function(type, attrs) {
         if (type === '2d') {
@@ -626,19 +658,22 @@ window.__createCanvas = function() {
             return this._ctx2d;
         }
         if (type === 'webgl' || type === 'webgl2' || type === 'experimental-webgl') {
-            // Return the native WebGL context for any canvas requesting it
-            // The actual GL context is global (one per SDL window)
             if (typeof __canvas !== 'undefined') {
                 var glCtx = __canvas.getContext('webgl');
                 if (glCtx) {
-                    // Track which canvas is the "active" WebGL canvas
                     _primaryCanvas = this;
                     this._isPrimary = true;
-                    this.width = this.width || innerWidth;
-                    this.height = this.height || innerHeight;
+                    this._glCtx = glCtx;
+                    // Default to SDL window size if not yet set by the game
+                    if (this._width <= 1) this._width = __canvas.width || innerWidth;
+                    if (this._height <= 1) this._height = __canvas.height || innerHeight;
+                    // Resize SDL window to match canvas dimensions
+                    if (typeof __resizeWindow === 'function') {
+                        __resizeWindow(this._width, this._height);
+                    }
                     glCtx.canvas = this;
-                    glCtx.drawingBufferWidth = this.width;
-                    glCtx.drawingBufferHeight = this.height;
+                    glCtx.drawingBufferWidth = this._width;
+                    glCtx.drawingBufferHeight = this._height;
                     return glCtx;
                 }
             }
@@ -1278,15 +1313,20 @@ window.HTMLCanvasElement = function() {};
 
 // Feature detection: Phaser checks these exist
 window.CanvasRenderingContext2D = window.__SoftCanvas2D;
-window.WebGLRenderingContext = function() {};
-window.WebGL2RenderingContext = function() {};
 
-// Make our GL context pass `instanceof WebGLRenderingContext` so Phaser
-// takes the WebGL1+extensions path instead of assuming WebGL2 native.
+// WebGLRenderingContext with custom instanceof: our GL context objects pass the
+// `ctx instanceof WebGLRenderingContext` check so Phaser takes the WebGL1+extensions path.
+window.WebGLRenderingContext = function() {};
 if (typeof __canvas !== 'undefined') {
     var _glCtx = __canvas.getContext('webgl');
-    if (_glCtx) Object.setPrototypeOf(_glCtx, WebGLRenderingContext.prototype);
+    if (_glCtx) {
+        Object.defineProperty(WebGLRenderingContext, Symbol.hasInstance, {
+            value: function(obj) { return obj === _glCtx || obj instanceof Object && '_isWebGLCtx' in obj; }
+        });
+        _glCtx._isWebGLCtx = true;
+    }
 }
+window.WebGL2RenderingContext = function() {};
 window.WebGLTexture = function() {};
 window.WebGLBuffer = function() {};
 window.WebGLFramebuffer = function() {};

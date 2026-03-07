@@ -32,6 +32,24 @@ static JSCValue *gl_wrap_resource(JSCContext *ctx, GLuint id) {
     return obj;
 }
 
+// --- WebGL unpack state (not native GL parameters) ---
+static gboolean gl_unpack_flip_y = FALSE;
+static gboolean gl_unpack_premultiply_alpha = FALSE;
+
+// Flip pixel data rows in-place for UNPACK_FLIP_Y_WEBGL
+static void flip_pixel_rows(uint8_t *data, int width, int height, int channels) {
+    int row_bytes = width * channels;
+    uint8_t *tmp = malloc(row_bytes);
+    for (int y = 0; y < height / 2; y++) {
+        uint8_t *top = data + y * row_bytes;
+        uint8_t *bot = data + (height - 1 - y) * row_bytes;
+        memcpy(tmp, top, row_bytes);
+        memcpy(top, bot, row_bytes);
+        memcpy(bot, tmp, row_bytes);
+    }
+    free(tmp);
+}
+
 // --- State Management ---
 
 static void gl_enable(GPtrArray *args, gpointer ud) { glEnable(ARG_INT(0)); }
@@ -57,9 +75,9 @@ static void gl_frontFace(GPtrArray *args, gpointer ud) { glFrontFace(ARG_INT(0))
 static void gl_lineWidth(GPtrArray *args, gpointer ud) { glLineWidth(ARG_DOUBLE(0)); }
 static void gl_pixelStorei(GPtrArray *args, gpointer ud) {
     int pname = ARG_INT(0);
-    // UNPACK_FLIP_Y_WEBGL (0x9240) and UNPACK_PREMULTIPLY_ALPHA_WEBGL (0x9241)
-    // are WebGL-only; we handle them in texImage2D if needed
-    if (pname == 0x9240 || pname == 0x9241 || pname == 0x9243) return;
+    if (pname == 0x9240) { gl_unpack_flip_y = ARG_BOOL(1); return; }
+    if (pname == 0x9241) { gl_unpack_premultiply_alpha = ARG_BOOL(1); return; }
+    if (pname == 0x9243) return; // UNPACK_COLORSPACE_CONVERSION_WEBGL: ignore
     glPixelStorei(pname, ARG_INT(1));
 }
 
@@ -96,7 +114,22 @@ static void gl_shaderSource(GPtrArray *args, gpointer ud) {
     g_free(src);
 }
 
-static void gl_compileShader(GPtrArray *args, gpointer ud) { glCompileShader(ARG_INT(0)); }
+static void gl_compileShader(GPtrArray *args, gpointer ud) {
+    GLuint shader = ARG_INT(0);
+    glCompileShader(shader);
+    GLint status;
+    glGetShaderiv(shader, GL_COMPILE_STATUS, &status);
+    if (!status) {
+        GLint len;
+        glGetShaderiv(shader, GL_INFO_LOG_LENGTH, &len);
+        if (len > 0) {
+            char *log = malloc(len);
+            glGetShaderInfoLog(shader, len, NULL, log);
+            fprintf(stderr, "[WebGL] Shader %u compile failed: %s\n", shader, log);
+            free(log);
+        }
+    }
+}
 
 static JSCValue *gl_getShaderParameter(GPtrArray *args, gpointer ud) {
     GLint val;
@@ -127,7 +160,22 @@ static JSCValue *gl_createProgram(GPtrArray *args, gpointer ud) {
 }
 
 static void gl_attachShader(GPtrArray *args, gpointer ud) { glAttachShader(ARG_INT(0), ARG_INT(1)); }
-static void gl_linkProgram(GPtrArray *args, gpointer ud) { glLinkProgram(ARG_INT(0)); }
+static void gl_linkProgram(GPtrArray *args, gpointer ud) {
+    GLuint prog = ARG_INT(0);
+    glLinkProgram(prog);
+    GLint status;
+    glGetProgramiv(prog, GL_LINK_STATUS, &status);
+    if (!status) {
+        GLint len;
+        glGetProgramiv(prog, GL_INFO_LOG_LENGTH, &len);
+        if (len > 0) {
+            char *log = malloc(len);
+            glGetProgramInfoLog(prog, len, NULL, log);
+            fprintf(stderr, "[WebGL] Program %u link failed: %s\n", prog, log);
+            free(log);
+        }
+    }
+}
 static void gl_useProgram(GPtrArray *args, gpointer ud) {
     if (ARG(0) && jsc_value_is_null(ARG(0))) glUseProgram(0);
     else glUseProgram(ARG_INT(0));
@@ -298,7 +346,6 @@ static void gl_uniformMatrix4fv(GPtrArray *args, gpointer ud) {
         if (count < 1) count = 1;
         glUniformMatrix4fv(ARG_INT(0), count, ARG_BOOL(1), data);
     } else if (jsc_value_is_array(arr)) {
-        // Handle regular JS arrays (Phaser uses these for matrices)
         float mat[16];
         for (int i = 0; i < 16; i++) {
             JSCValue *v = jsc_value_object_get_property_at_index(arr, i);
@@ -388,6 +435,17 @@ static void gl_texParameterf(GPtrArray *args, gpointer ud) {
     glTexParameterf(ARG_INT(0), ARG_INT(1), ARG_DOUBLE(2));
 }
 
+// Get bytes-per-pixel for a GL format
+static int gl_format_channels(int format) {
+    switch (format) {
+        case GL_RGBA: return 4;
+        case GL_RGB: return 3;
+        case GL_LUMINANCE_ALPHA: return 2;
+        case GL_LUMINANCE: case GL_ALPHA: return 1;
+        default: return 4;
+    }
+}
+
 static void gl_texImage2D(GPtrArray *args, gpointer ud) {
     int target = ARG_INT(0);
     int level = ARG_INT(1);
@@ -405,7 +463,17 @@ static void gl_texImage2D(GPtrArray *args, gpointer ud) {
             gsize len;
             pixels = jsc_value_typed_array_get_data(data, &len);
         }
-        glTexImage2D(target, level, internalformat, width, height, 0, format, type, pixels);
+        if (gl_unpack_flip_y && pixels && width > 0 && height > 0) {
+            int channels = gl_format_channels(format);
+            gsize size = width * height * channels;
+            uint8_t *copy = malloc(size);
+            memcpy(copy, pixels, size);
+            flip_pixel_rows(copy, width, height, channels);
+            glTexImage2D(target, level, internalformat, width, height, 0, format, type, copy);
+            free(copy);
+        } else {
+            glTexImage2D(target, level, internalformat, width, height, 0, format, type, pixels);
+        }
     } else if (args->len == 6) {
         // texImage2D(target, level, internalformat, format, type, image_or_canvas)
         int format = ARG_INT(3);
@@ -423,7 +491,17 @@ static void gl_texImage2D(GPtrArray *args, gpointer ud) {
                 int h = jsc_value_to_int32(hv);
                 gsize size;
                 void *pixels = jsc_value_array_buffer_get_data(pd, &size);
-                glTexImage2D(target, level, internalformat, w, h, 0, format, type, pixels);
+                if (gl_unpack_flip_y && pixels && w > 0 && h > 0) {
+                    int channels = gl_format_channels(format);
+                    gsize copy_size = w * h * channels;
+                    uint8_t *copy = malloc(copy_size);
+                    memcpy(copy, pixels, copy_size < size ? copy_size : size);
+                    flip_pixel_rows(copy, w, h, channels);
+                    glTexImage2D(target, level, internalformat, w, h, 0, format, type, copy);
+                    free(copy);
+                } else {
+                    glTexImage2D(target, level, internalformat, w, h, 0, format, type, pixels);
+                }
             }
 
             if (pd) g_object_unref(pd);
@@ -450,7 +528,17 @@ static void gl_texSubImage2D(GPtrArray *args, gpointer ud) {
             gsize len;
             pixels = jsc_value_typed_array_get_data(data, &len);
         }
-        glTexSubImage2D(target, level, xoff, yoff, width, height, format, type, pixels);
+        if (gl_unpack_flip_y && pixels && width > 0 && height > 0) {
+            int channels = gl_format_channels(format);
+            gsize size = width * height * channels;
+            uint8_t *copy = malloc(size);
+            memcpy(copy, pixels, size);
+            flip_pixel_rows(copy, width, height, channels);
+            glTexSubImage2D(target, level, xoff, yoff, width, height, format, type, copy);
+            free(copy);
+        } else {
+            glTexSubImage2D(target, level, xoff, yoff, width, height, format, type, pixels);
+        }
     } else if (args->len == 7) {
         int format = ARG_INT(4);
         int type = ARG_INT(5);
@@ -466,7 +554,17 @@ static void gl_texSubImage2D(GPtrArray *args, gpointer ud) {
                 int h = jsc_value_to_int32(hv);
                 gsize size;
                 void *pixels = jsc_value_array_buffer_get_data(pd, &size);
-                glTexSubImage2D(target, level, xoff, yoff, w, h, format, type, pixels);
+                if (gl_unpack_flip_y && pixels && w > 0 && h > 0) {
+                    int channels = gl_format_channels(format);
+                    gsize copy_size = w * h * channels;
+                    uint8_t *copy = malloc(copy_size);
+                    memcpy(copy, pixels, copy_size < size ? copy_size : size);
+                    flip_pixel_rows(copy, w, h, channels);
+                    glTexSubImage2D(target, level, xoff, yoff, w, h, format, type, copy);
+                    free(copy);
+                } else {
+                    glTexSubImage2D(target, level, xoff, yoff, w, h, format, type, pixels);
+                }
             }
 
             if (pd) g_object_unref(pd);
@@ -544,7 +642,14 @@ static void gl_drawArrays(GPtrArray *args, gpointer ud) {
 }
 
 static void gl_drawElements(GPtrArray *args, gpointer ud) {
-    glDrawElements(ARG_INT(0), ARG_INT(1), ARG_INT(2), (const void *)(intptr_t)ARG_INT(3));
+    GLint count = ARG_INT(1);
+    // Safety: skip draw calls with zero or negative count
+    if (count <= 0) return;
+    // Validate we have a bound element buffer
+    GLint ebo = 0;
+    glGetIntegerv(GL_ELEMENT_ARRAY_BUFFER_BINDING, &ebo);
+    if (ebo == 0) return; // No index buffer bound - skip draw
+    glDrawElements(ARG_INT(0), count, ARG_INT(2), (const void *)(intptr_t)ARG_INT(3));
 }
 
 // --- Query ---

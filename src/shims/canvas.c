@@ -1,5 +1,37 @@
 #include "engine.h"
 
+static void native_resizeWindow(GPtrArray *args, gpointer user_data) {
+    if (args->len < 2) return;
+    int w = jsc_value_to_int32(g_ptr_array_index(args, 0));
+    int h = jsc_value_to_int32(g_ptr_array_index(args, 1));
+    if (w <= 0 || h <= 0 || w > 7680 || h > 4320) return;
+    if (w == g_engine.screen_w && h == g_engine.screen_h) return;
+
+    g_engine.screen_w = w;
+    g_engine.screen_h = h;
+    SDL_SetWindowSize(g_engine.window, w, h);
+    glViewport(0, 0, w, h);
+
+    JSCContext *ctx = jsc_context_get_current();
+
+    // Update __canvas.width/height
+    if (g_engine.canvas_obj) {
+        jsc_value_object_set_property(g_engine.canvas_obj, "width",
+            jsc_value_new_number(ctx, w));
+        jsc_value_object_set_property(g_engine.canvas_obj, "height",
+            jsc_value_new_number(ctx, h));
+    }
+
+    // Update window.innerWidth/innerHeight/screen dimensions
+    JSCValue *global = jsc_context_get_global_object(ctx);
+    jsc_value_object_set_property(global, "innerWidth", jsc_value_new_number(ctx, w));
+    jsc_value_object_set_property(global, "innerHeight", jsc_value_new_number(ctx, h));
+    jsc_value_object_set_property(global, "outerWidth", jsc_value_new_number(ctx, w));
+    jsc_value_object_set_property(global, "outerHeight", jsc_value_new_number(ctx, h));
+
+    printf("[Engine] Window resized to %dx%d\n", w, h);
+}
+
 static JSCValue *native_getContext(GPtrArray *args, gpointer user_data) {
     JSCContext *ctx = jsc_context_get_current();
     if (args->len < 1) return jsc_value_new_null(ctx);
@@ -82,6 +114,12 @@ void register_canvas_shim(JSCContext *ctx) {
 
     g_object_unref(gc);
     g_object_unref(gbcr);
+
+    // Resize function
+    JSCValue *rw = jsc_value_new_function_variadic(ctx, "__resizeWindow",
+        G_CALLBACK(native_resizeWindow), NULL, NULL, G_TYPE_NONE);
+    jsc_context_set_value(ctx, "__resizeWindow", rw);
+    g_object_unref(rw);
 
     // Store globally
     g_engine.canvas_obj = canvas;

@@ -4,6 +4,8 @@ static int native_setTimeout(GPtrArray *args, gpointer user_data) {
     if (args->len < 1) return 0;
     JSCValue *callback = g_ptr_array_index(args, 0);
     double delay = args->len > 1 ? jsc_value_to_double(g_ptr_array_index(args, 1)) : 0;
+    // Treat NaN delay as 0
+    if (delay != delay) delay = 0;
 
     Engine *e = &g_engine;
     int id = e->next_timer_id++;

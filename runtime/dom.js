@@ -267,21 +267,36 @@ Object.defineProperty(DOMNode.prototype, 'childElementCount', {
     get: function() { return this.children.length; }
 });
 
-// Tree manipulation
+// Tree manipulation (with MutationObserver notifications)
 DOMNode.prototype.appendChild = function(child) {
     if (!this._id || !child || !child._id) return child;
     __domAppendChild(this._id, child._id);
+    if (typeof __notifyMutation === 'function') {
+        __notifyMutation(this, 'childList', {
+            type: 'childList', target: this, addedNodes: [child], removedNodes: []
+        });
+    }
     return child;
 };
 DOMNode.prototype.removeChild = function(child) {
     if (!this._id || !child || !child._id) return child;
     __domRemoveChild(this._id, child._id);
+    if (typeof __notifyMutation === 'function') {
+        __notifyMutation(this, 'childList', {
+            type: 'childList', target: this, addedNodes: [], removedNodes: [child]
+        });
+    }
     return child;
 };
 DOMNode.prototype.insertBefore = function(newChild, refChild) {
     if (!this._id || !newChild || !newChild._id) return newChild;
     var refId = (refChild && refChild._id) ? refChild._id : 0;
     __domInsertBefore(this._id, newChild._id, refId);
+    if (typeof __notifyMutation === 'function') {
+        __notifyMutation(this, 'childList', {
+            type: 'childList', target: this, addedNodes: [newChild], removedNodes: []
+        });
+    }
     return newChild;
 };
 DOMNode.prototype.replaceChild = function(newChild, oldChild) {
@@ -337,7 +352,14 @@ Object.defineProperty(DOMNode.prototype, 'textContent', {
         return this._id ? __domGetText(this._id) : '';
     },
     set: function(v) {
-        if (this._id) __domSetText(this._id, v || '');
+        if (this._id) {
+            __domSetText(this._id, v || '');
+            if (typeof __notifyMutation === 'function') {
+                __notifyMutation(this, 'characterData', {
+                    type: 'characterData', target: this
+                });
+            }
+        }
     }
 });
 Object.defineProperty(DOMNode.prototype, 'ownerDocument', {
@@ -400,7 +422,14 @@ Object.defineProperty(DOMElement.prototype, 'innerHTML', {
         return this._id ? __domGetText(this._id) : '';
     },
     set: function(v) {
-        if (this._id) __domSetInnerHTML(this._id, v || '');
+        if (this._id) {
+            __domSetInnerHTML(this._id, v || '');
+            if (typeof __notifyMutation === 'function') {
+                __notifyMutation(this, 'childList', {
+                    type: 'childList', target: this, addedNodes: [], removedNodes: []
+                });
+            }
+        }
     }
 });
 Object.defineProperty(DOMElement.prototype, 'outerHTML', {
@@ -419,7 +448,15 @@ DOMElement.prototype.getAttribute = function(name) {
     return this._id ? __domGetAttr(this._id, name) : null;
 };
 DOMElement.prototype.setAttribute = function(name, value) {
-    if (this._id) __domSetAttr(this._id, name, String(value));
+    if (this._id) {
+        var oldVal = __domGetAttr(this._id, name);
+        __domSetAttr(this._id, name, String(value));
+        if (typeof __notifyMutation === 'function') {
+            __notifyMutation(this, 'attributes', {
+                type: 'attributes', target: this, attributeName: name, oldValue: oldVal
+            });
+        }
+    }
 };
 DOMElement.prototype.removeAttribute = function(name) {
     if (this._id) __domRemoveAttr(this._id, name);
@@ -643,17 +680,20 @@ var htmlEl = docRootId ? getNode(docRootId) : null;
 var bodyEl = htmlEl ? htmlEl.querySelector('body') : null;
 var headEl = htmlEl ? htmlEl.querySelector('head') : null;
 
-// Create missing elements if needed
+// Create missing elements if needed (DOM bridge may not be loaded for plain JS files)
 if (!htmlEl) {
-    htmlEl = getNode(__domCreateElement('html'));
+    var hid = __domCreateElement('html');
+    htmlEl = hid ? getNode(hid) : null;
 }
-if (!bodyEl) {
-    bodyEl = getNode(__domCreateElement('body'));
-    htmlEl.appendChild(bodyEl);
+if (htmlEl && !bodyEl) {
+    var bid = __domCreateElement('body');
+    bodyEl = bid ? getNode(bid) : null;
+    if (bodyEl) htmlEl.appendChild(bodyEl);
 }
-if (!headEl) {
-    headEl = getNode(__domCreateElement('head'));
-    htmlEl.insertBefore(headEl, bodyEl);
+if (htmlEl && !headEl) {
+    var heid = __domCreateElement('head');
+    headEl = heid ? getNode(heid) : null;
+    if (headEl) htmlEl.insertBefore(headEl, bodyEl);
 }
 
 // Enhance the existing document object or create a new one
@@ -671,27 +711,46 @@ doc.hidden = false;
 
 doc.createElement = function(tag) {
     var tagLower = tag.toLowerCase();
-    // Canvas: return the shim canvas directly (has WebGL getContext etc.)
+    // Canvas: return the shim canvas with a backing DOM element for tree ops
     if (tagLower === 'canvas' && typeof __createCanvas === 'function') {
         var canvas = __createCanvas();
         if (canvas) {
-            // Add DOM methods Angular/frameworks expect on canvas
+            // Give it a backing litehtml element so appendChild/removeChild work
+            var backingId = __domCreateElement('canvas');
+            canvas._id = backingId;
+            nodeCache[backingId] = canvas;
             canvas.nodeType = ELEMENT_NODE;
             canvas.nodeName = 'CANVAS';
             canvas.tagName = 'CANVAS';
             canvas.ownerDocument = doc;
-            canvas.parentNode = null;
-            canvas.parentElement = null;
-            if (!canvas.addEventListener) canvas.addEventListener = function(){};
-            if (!canvas.removeEventListener) canvas.removeEventListener = function(){};
-            if (!canvas.dispatchEvent) canvas.dispatchEvent = function(){ return true; };
+            canvas._listeners = canvas._listeners || {};
+            // DOM tree traversal via backing element
+            Object.defineProperty(canvas, 'parentNode', {
+                get: function() {
+                    if (!this._id) return null;
+                    var pid = __domGetParentId(this._id);
+                    return pid ? getNode(pid) : null;
+                }, configurable: true
+            });
+            Object.defineProperty(canvas, 'parentElement', {
+                get: function() { var p = this.parentNode; return (p && p.nodeType === ELEMENT_NODE) ? p : null; },
+                configurable: true
+            });
+            canvas.appendChild = DOMNode.prototype.appendChild;
+            canvas.removeChild = DOMNode.prototype.removeChild;
+            canvas.insertBefore = DOMNode.prototype.insertBefore;
+            canvas.contains = DOMNode.prototype.contains;
+            canvas.dispatchEvent = DOMNode.prototype.dispatchEvent;
             if (!canvas.querySelector) canvas.querySelector = function(){ return null; };
             if (!canvas.querySelectorAll) canvas.querySelectorAll = function(){ return []; };
             if (!canvas.matches) canvas.matches = function(){ return false; };
             if (!canvas.closest) canvas.closest = function(){ return null; };
             if (!canvas.hasAttribute) canvas.hasAttribute = function(){ return false; };
-            if (!canvas.remove) canvas.remove = function() {
-                if (this.parentNode) this.parentNode.removeChild(this);
+            canvas.setAttribute = function(name, val) { if (this._id) __domSetAttr(this._id, name, String(val)); };
+            canvas.getAttribute = function(name) { return this._id ? __domGetAttr(this._id, name) : null; };
+            canvas.remove = function() {
+                var p = this.parentNode;
+                if (p) p.removeChild(this);
             };
             return canvas;
         }
@@ -821,10 +880,12 @@ doc.adoptNode = function(node) { return node; };
 doc.importNode = function(node, deep) { return node.cloneNode(deep); };
 
 // document.body convenience methods
-bodyEl.getBoundingClientRect = function() {
-    return { left:0, top:0, right: innerWidth||640, bottom: innerHeight||480,
-             width: innerWidth||640, height: innerHeight||480, x:0, y:0 };
-};
+if (bodyEl) {
+    bodyEl.getBoundingClientRect = function() {
+        return { left:0, top:0, right: innerWidth||640, bottom: innerHeight||480,
+                 width: innerWidth||640, height: innerHeight||480, x:0, y:0 };
+    };
+}
 
 // window.getComputedStyle
 if (typeof window !== 'undefined') {
@@ -898,15 +959,79 @@ if (typeof CustomEvent === 'undefined') {
     window.CustomEvent.prototype = Object.create(Event.prototype);
 }
 
-// MutationObserver stub (Angular uses this)
-if (typeof MutationObserver === 'undefined') {
-    window.MutationObserver = function(callback) {
+// MutationObserver - functional implementation that Angular needs
+// Tracks observed targets and fires callbacks when DOM tree is mutated
+(function() {
+    var observers = [];
+
+    function MutationObserverImpl(callback) {
         this._callback = callback;
+        this._targets = [];
+        this._pending = [];
+        this._scheduled = false;
+    }
+    MutationObserverImpl.prototype.observe = function(target, options) {
+        if (!target) return;
+        this._targets.push({ target: target, options: options || {} });
+        if (observers.indexOf(this) < 0) observers.push(this);
     };
-    window.MutationObserver.prototype.observe = function() {};
-    window.MutationObserver.prototype.disconnect = function() {};
-    window.MutationObserver.prototype.takeRecords = function() { return []; };
-}
+    MutationObserverImpl.prototype.disconnect = function() {
+        this._targets = [];
+        var idx = observers.indexOf(this);
+        if (idx >= 0) observers.splice(idx, 1);
+    };
+    MutationObserverImpl.prototype.takeRecords = function() {
+        var records = this._pending;
+        this._pending = [];
+        return records;
+    };
+    MutationObserverImpl.prototype._notify = function(record) {
+        this._pending.push(record);
+        if (!this._scheduled) {
+            this._scheduled = true;
+            var self = this;
+            queueMicrotask(function() {
+                self._scheduled = false;
+                var records = self._pending;
+                self._pending = [];
+                if (records.length > 0) {
+                    try { self._callback(records, self); } catch(e) { console.error('[MutationObserver]', e.message || e); }
+                }
+            });
+        }
+    };
+
+    // Notify all observers watching a given target about a mutation
+    window.__notifyMutation = function(target, type, record) {
+        for (var i = 0; i < observers.length; i++) {
+            var obs = observers[i];
+            for (var j = 0; j < obs._targets.length; j++) {
+                var t = obs._targets[j];
+                var watching = (t.target === target);
+                // subtree: also match if target is a descendant
+                if (!watching && t.options.subtree) {
+                    var node = target;
+                    while (node) {
+                        if (node === t.target) { watching = true; break; }
+                        node = node.parentNode;
+                    }
+                }
+                if (watching) {
+                    if (type === 'childList' && t.options.childList) {
+                        obs._notify(record);
+                    } else if (type === 'attributes' && t.options.attributes) {
+                        obs._notify(record);
+                    } else if (type === 'characterData' && t.options.characterData) {
+                        obs._notify(record);
+                    }
+                    break;
+                }
+            }
+        }
+    };
+
+    window.MutationObserver = MutationObserverImpl;
+})();
 
 // ResizeObserver stub
 if (typeof ResizeObserver === 'undefined') {

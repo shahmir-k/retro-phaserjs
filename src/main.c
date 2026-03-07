@@ -156,9 +156,24 @@ int main(int argc, char *argv[]) {
         game_dir = strdup(dirname(input_copy));
         free(input_copy);
     } else {
-        // Assume it's a directory containing index.html
+        // Directory: check for index.html first, then game.js
         game_dir = strdup(input);
-        is_html = true;
+        char probe[2048];
+        snprintf(probe, sizeof(probe), "%s/index.html", game_dir);
+        FILE *f = fopen(probe, "r");
+        if (f) {
+            fclose(f);
+            is_html = true;
+        } else {
+            snprintf(probe, sizeof(probe), "%s/game.js", game_dir);
+            f = fopen(probe, "r");
+            if (f) {
+                fclose(f);
+                is_js = true;
+            } else {
+                is_html = true; // fallback
+            }
+        }
     }
 
     // Derive game name from directory name
@@ -218,7 +233,14 @@ int main(int argc, char *argv[]) {
             free(scripts);
         }
     } else if (is_js) {
-        eval_file(g_engine.js_ctx, input);
+        // If input was a directory, load game_dir/game.js; otherwise load the .js file directly
+        if (input_len > 3 && strcmp(input + input_len - 3, ".js") == 0) {
+            eval_file(g_engine.js_ctx, input);
+        } else {
+            char js_path[2048];
+            snprintf(js_path, sizeof(js_path), "%s/game.js", game_dir);
+            eval_file(g_engine.js_ctx, js_path);
+        }
     }
 
     // Patch Phaser compatibility issues between versions
@@ -278,14 +300,15 @@ int main(int argc, char *argv[]) {
             }
             // F12 saves screenshot
             if (ev.type == SDL_KEYDOWN && ev.key.keysym.sym == SDLK_F12) {
-                uint8_t *px = malloc(width * height * 4);
-                glReadPixels(0, 0, width, height, GL_RGBA, GL_UNSIGNED_BYTE, px);
+                int sw = g_engine.screen_w, sh = g_engine.screen_h;
+                uint8_t *px = malloc(sw * sh * 4);
+                glReadPixels(0, 0, sw, sh, GL_RGBA, GL_UNSIGNED_BYTE, px);
                 FILE *f = fopen("screenshot.ppm", "wb");
                 if (f) {
-                    fprintf(f, "P6\n%d %d\n255\n", width, height);
-                    for (int y = height-1; y >= 0; y--)
-                        for (int x = 0; x < width; x++) {
-                            int i = (y*width+x)*4;
+                    fprintf(f, "P6\n%d %d\n255\n", sw, sh);
+                    for (int y = sh-1; y >= 0; y--)
+                        for (int x = 0; x < sw; x++) {
+                            int i = (y*sw+x)*4;
                             fwrite(px+i, 1, 3, f);
                         }
                     fclose(f);
@@ -306,14 +329,15 @@ int main(int argc, char *argv[]) {
         SDL_GL_SwapWindow(g_engine.window);
 
         if (screenshot_frame > 0 && frame == screenshot_frame) {
-            uint8_t *px = malloc(width * height * 4);
-            glReadPixels(0, 0, width, height, GL_RGBA, GL_UNSIGNED_BYTE, px);
+            int sw = g_engine.screen_w, sh = g_engine.screen_h;
+            uint8_t *px = malloc(sw * sh * 4);
+            glReadPixels(0, 0, sw, sh, GL_RGBA, GL_UNSIGNED_BYTE, px);
             FILE *f = fopen("screenshot.ppm", "wb");
             if (f) {
-                fprintf(f, "P6\n%d %d\n255\n", width, height);
-                for (int y = height-1; y >= 0; y--)
-                    for (int x = 0; x < width; x++) {
-                        int i = (y*width+x)*4;
+                fprintf(f, "P6\n%d %d\n255\n", sw, sh);
+                for (int y = sh-1; y >= 0; y--)
+                    for (int x = 0; x < sw; x++) {
+                        int i = (y*sw+x)*4;
                         fwrite(px+i, 1, 3, f);
                     }
                 fclose(f);
