@@ -1,6 +1,10 @@
 #ifndef ENGINE_H
 #define ENGINE_H
 
+#ifdef __cplusplus
+extern "C" {
+#endif
+
 #include <jsc/jsc.h>
 #include <SDL2/SDL.h>
 #include <SDL2/SDL_mixer.h>
@@ -81,6 +85,9 @@ void register_text_shim(JSCContext *ctx);
 void register_websocket_shim(JSCContext *ctx);
 void register_webrtc_shim(JSCContext *ctx);
 void register_fetch_net_shim(JSCContext *ctx);
+void register_dom_bridge_shim(JSCContext *ctx);
+void dom_bridge_load_html(JSCContext *ctx, const char *html);
+void dom_bridge_shutdown(void);
 
 // Timer processing
 void process_timers(double now_ms);
@@ -93,5 +100,9 @@ void translate_sdl_event(SDL_Event *event);
 double engine_now_ms(void);
 char *engine_resolve_path(const char *url);
 char *engine_read_file(const char *path, size_t *out_len);
+
+#ifdef __cplusplus
+}
+#endif
 
 #endif

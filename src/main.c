@@ -180,6 +180,15 @@ int main(int argc, char *argv[]) {
             snprintf(html_path, sizeof(html_path), "%s/index.html", game_dir);
         }
 
+        // Parse HTML into litehtml DOM tree and load JS DOM wrapper
+        size_t html_len;
+        char *html_content = engine_read_file(html_path, &html_len);
+        if (html_content) {
+            dom_bridge_load_html(g_engine.js_ctx, html_content);
+            free(html_content);
+        }
+        eval_file(g_engine.js_ctx, "runtime/dom.js");
+
         int script_count;
         ScriptEntry *scripts = parse_html_scripts(html_path, &script_count);
         if (scripts) {
