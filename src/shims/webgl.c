@@ -3,10 +3,34 @@
 
 // Helper macros for argument extraction
 #define ARG(i) ((i) < args->len ? (JSCValue*)g_ptr_array_index(args, (i)) : NULL)
-#define ARG_INT(i) (ARG(i) ? jsc_value_to_int32(ARG(i)) : 0)
 #define ARG_DOUBLE(i) (ARG(i) ? jsc_value_to_double(ARG(i)) : 0.0)
 #define ARG_BOOL(i) (ARG(i) ? jsc_value_to_boolean(ARG(i)) : FALSE)
 #define CTX() jsc_context_get_current()
+
+// Extract GL integer ID from either a plain number or a wrapper object with _id property.
+// This supports both old-style bare integer IDs and new wrapper objects returned by create*.
+static GLint gl_arg_int(JSCValue *val) {
+    if (!val) return 0;
+    if (jsc_value_is_number(val)) return jsc_value_to_int32(val);
+    if (jsc_value_is_object(val)) {
+        JSCValue *id = jsc_value_object_get_property(val, "_id");
+        GLint result = 0;
+        if (id && jsc_value_is_number(id)) result = jsc_value_to_int32(id);
+        if (id) g_object_unref(id);
+        return result;
+    }
+    return jsc_value_to_int32(val);
+}
+#define ARG_INT(i) gl_arg_int(ARG(i))
+
+// Create a GL resource wrapper object: { _id: <gl_id> }
+// These objects allow Phaser to set arbitrary properties (e.g. __SPECTOR_Metadata).
+static JSCValue *gl_wrap_resource(JSCContext *ctx, GLuint id) {
+    if (id == 0) return jsc_value_new_null(ctx);
+    JSCValue *obj = jsc_value_new_object(ctx, NULL, NULL);
+    jsc_value_object_set_property(obj, "_id", jsc_value_new_number(ctx, id));
+    return obj;
+}
 
 // --- State Management ---
 
@@ -61,7 +85,7 @@ static void gl_scissor(GPtrArray *args, gpointer ud) {
 
 static JSCValue *gl_createShader(GPtrArray *args, gpointer ud) {
     GLuint s = glCreateShader(ARG_INT(0));
-    return s ? jsc_value_new_number(CTX(), s) : jsc_value_new_null(CTX());
+    return gl_wrap_resource(CTX(), s);
 }
 
 static void gl_shaderSource(GPtrArray *args, gpointer ud) {
@@ -99,7 +123,7 @@ static void gl_deleteShader(GPtrArray *args, gpointer ud) { glDeleteShader(ARG_I
 
 static JSCValue *gl_createProgram(GPtrArray *args, gpointer ud) {
     GLuint p = glCreateProgram();
-    return p ? jsc_value_new_number(CTX(), p) : jsc_value_new_null(CTX());
+    return gl_wrap_resource(CTX(), p);
 }
 
 static void gl_attachShader(GPtrArray *args, gpointer ud) { glAttachShader(ARG_INT(0), ARG_INT(1)); }
@@ -290,7 +314,7 @@ static void gl_uniformMatrix4fv(GPtrArray *args, gpointer ud) {
 static JSCValue *gl_createBuffer(GPtrArray *args, gpointer ud) {
     GLuint buf;
     glGenBuffers(1, &buf);
-    return jsc_value_new_number(CTX(), buf);
+    return gl_wrap_resource(CTX(), buf);
 }
 
 static void gl_bindBuffer(GPtrArray *args, gpointer ud) {
@@ -345,7 +369,7 @@ static void gl_deleteBuffer(GPtrArray *args, gpointer ud) {
 static JSCValue *gl_createTexture(GPtrArray *args, gpointer ud) {
     GLuint tex;
     glGenTextures(1, &tex);
-    return jsc_value_new_number(CTX(), tex);
+    return gl_wrap_resource(CTX(), tex);
 }
 
 static void gl_bindTexture(GPtrArray *args, gpointer ud) {
@@ -464,7 +488,7 @@ static void gl_deleteTexture(GPtrArray *args, gpointer ud) {
 static JSCValue *gl_createFramebuffer(GPtrArray *args, gpointer ud) {
     GLuint fbo;
     glGenFramebuffers(1, &fbo);
-    return jsc_value_new_number(CTX(), fbo);
+    return gl_wrap_resource(CTX(), fbo);
 }
 
 static void gl_bindFramebuffer(GPtrArray *args, gpointer ud) {
@@ -491,7 +515,7 @@ static void gl_deleteFramebuffer(GPtrArray *args, gpointer ud) {
 static JSCValue *gl_createRenderbuffer(GPtrArray *args, gpointer ud) {
     GLuint rbo;
     glGenRenderbuffers(1, &rbo);
-    return jsc_value_new_number(CTX(), rbo);
+    return gl_wrap_resource(CTX(), rbo);
 }
 
 static void gl_bindRenderbuffer(GPtrArray *args, gpointer ud) {
@@ -581,7 +605,7 @@ static JSCValue *gl_vertexAttribDivisor(GPtrArray *args, gpointer ud) {
 static JSCValue *gl_createVertexArray(GPtrArray *args, gpointer ud) {
     GLuint vao;
     glGenVertexArrays(1, &vao);
-    return jsc_value_new_number(CTX(), vao);
+    return gl_wrap_resource(CTX(), vao);
 }
 
 static JSCValue *gl_deleteVertexArray(GPtrArray *args, gpointer ud) {
