@@ -110,14 +110,17 @@ static void fire_key_event(const char *type, SDL_KeyboardEvent *key) {
     const char *dom_code = sdl_to_dom_code(key->keysym.scancode);
     int keyCode = sdl_to_keycode(key->keysym.sym);
 
-    char js[1024];
+    char js[2048];
     snprintf(js, sizeof(js),
         "(function() {"
         "  var e = { type:'%s', key:'%s', code:'%s', keyCode:%d, which:%d,"
         "    ctrlKey:%s, shiftKey:%s, altKey:%s, metaKey:false,"
         "    repeat:%s, preventDefault:function(){}, stopPropagation:function(){} };"
         "  if (window._eventListeners && window._eventListeners['%s']) {"
-        "    window._eventListeners['%s'].forEach(function(cb){ cb(e); });"
+        "    window._eventListeners['%s'].slice().forEach(function(cb){ cb(e); });"
+        "  }"
+        "  if (typeof document !== 'undefined' && document._listeners && document._listeners['%s']) {"
+        "    document._listeners['%s'].slice().forEach(function(cb){ cb(e); });"
         "  }"
         "})();",
         type, dom_key, dom_code, keyCode, keyCode,
@@ -125,7 +128,7 @@ static void fire_key_event(const char *type, SDL_KeyboardEvent *key) {
         (key->keysym.mod & KMOD_SHIFT) ? "true" : "false",
         (key->keysym.mod & KMOD_ALT) ? "true" : "false",
         key->repeat ? "true" : "false",
-        type, type);
+        type, type, type, type);
 
     JSCValue *r = jsc_context_evaluate(ctx, js, -1);
     if (r) g_object_unref(r);
@@ -139,8 +142,9 @@ static void fire_mouse_event(const char *type, int x, int y, int button) {
         "(function() {"
         "  var e = { type:'%s', clientX:%d, clientY:%d, pageX:%d, pageY:%d,"
         "    offsetX:%d, offsetY:%d, button:%d, buttons:%d,"
-        "    pointerId:1, pointerType:'mouse', isPrimary:true,"
-        "    preventDefault:function(){}, stopPropagation:function(){} };"
+        "    pointerId:1, pointerType:'mouse', isPrimary:true, width:1, height:1,"
+        "    target: (typeof _primaryCanvas !== 'undefined' ? _primaryCanvas : null),"
+        "    preventDefault:function(){}, stopPropagation:function(){}, stopImmediatePropagation:function(){} };"
         "  if (typeof _primaryCanvas !== 'undefined' && _primaryCanvas && _primaryCanvas._listeners && _primaryCanvas._listeners['%s']) {"
         "    _primaryCanvas._listeners['%s'].slice().forEach(function(cb){ cb(e); });"
         "  }"
@@ -150,9 +154,12 @@ static void fire_mouse_event(const char *type, int x, int y, int button) {
         "  if (window._eventListeners && window._eventListeners['%s']) {"
         "    window._eventListeners['%s'].slice().forEach(function(cb){ cb(e); });"
         "  }"
+        "  if (typeof document !== 'undefined' && document._listeners && document._listeners['%s']) {"
+        "    document._listeners['%s'].slice().forEach(function(cb){ cb(e); });"
+        "  }"
         "})();",
         type, x, y, x, y, x, y, button, button ? 1 : 0,
-        type, type, type, type, type, type);
+        type, type, type, type, type, type, type, type);
 
     JSCValue *r = jsc_context_evaluate(ctx, js, -1);
     if (r) g_object_unref(r);
