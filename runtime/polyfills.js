@@ -661,7 +661,7 @@ window.__createCanvas = function() {
             if (typeof __canvas !== 'undefined') {
                 var glCtx = __canvas.getContext('webgl');
                 if (glCtx) {
-                    _primaryCanvas = this;
+                    _primaryCanvas = window._primaryCanvas = this;
                     this._isPrimary = true;
                     this._glCtx = glCtx;
                     // Default to SDL window size if not yet set by the game

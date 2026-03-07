@@ -148,7 +148,7 @@ static void fire_mouse_event(const char *type, int x, int y, int button) {
         "  if (typeof _primaryCanvas !== 'undefined' && _primaryCanvas && _primaryCanvas._listeners && _primaryCanvas._listeners['%s']) {"
         "    _primaryCanvas._listeners['%s'].slice().forEach(function(cb){ cb(e); });"
         "  }"
-        "  if (typeof __canvas !== 'undefined' && __canvas._listeners && __canvas._listeners['%s']) {"
+        "  if (typeof __canvas !== 'undefined' && __canvas !== _primaryCanvas && __canvas._listeners && __canvas._listeners['%s']) {"
         "    __canvas._listeners['%s'].slice().forEach(function(cb){ cb(e); });"
         "  }"
         "  if (window._eventListeners && window._eventListeners['%s']) {"
