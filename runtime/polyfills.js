@@ -822,6 +822,9 @@ window.Audio = function(src) {
     var _OrigImage = Image;
     window.Image = function(w, h) {
         var img = _OrigImage(w, h);
+        // Set prototype so (img instanceof Image) and (img instanceof HTMLImageElement) work.
+        // Phaser checks this before uploading textures to GL.
+        Object.setPrototypeOf(img, window.Image.prototype);
         var _src = '';
         var _attrs = {};
         Object.defineProperty(img, 'src', {
