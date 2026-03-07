@@ -123,22 +123,27 @@ static void fire_key_event(const char *type, SDL_KeyboardEvent *key) {
         "  var e = { type:'%s', key:'%s', code:'%s', keyCode:%d, which:%d,"
         "    ctrlKey:%s, shiftKey:%s, altKey:%s, metaKey:false,"
         "    repeat:%s, preventDefault:function(){}, stopPropagation:function(){} };"
-        "  if (window._eventListeners && window._eventListeners['%s']) {"
-        "    window._eventListeners['%s'].slice().forEach(function(cb){ cb(e); });"
+        "  function safeFire(list) {"
+        "    if (!list) return;"
+        "    list.slice().forEach(function(cb){ try { cb(e); } catch(ex) {"
+        "      console.error('[Event:%s]', ex.message || ex); } });"
         "  }"
-        "  if (typeof document !== 'undefined' && document._listeners && document._listeners['%s']) {"
-        "    document._listeners['%s'].slice().forEach(function(cb){ cb(e); });"
-        "  }"
+        "  if (window._eventListeners) safeFire(window._eventListeners['%s']);"
+        "  if (typeof document !== 'undefined' && document._listeners) safeFire(document._listeners['%s']);"
         "})();",
         type, dom_key, dom_code, keyCode, keyCode,
         (key->keysym.mod & KMOD_CTRL) ? "true" : "false",
         (key->keysym.mod & KMOD_SHIFT) ? "true" : "false",
         (key->keysym.mod & KMOD_ALT) ? "true" : "false",
         key->repeat ? "true" : "false",
-        type, type, type, type);
+        type, type, type);
 
     JSCValue *r = jsc_context_evaluate(ctx, js, -1);
     if (r) g_object_unref(r);
+
+    // Clear any JS exception to prevent corruption in subsequent C calls
+    JSCException *exc = jsc_context_get_exception(ctx);
+    if (exc) jsc_context_clear_exception(ctx);
 }
 
 static void fire_mouse_event(const char *type, int x, int y, int button) {
@@ -155,21 +160,24 @@ static void fire_mouse_event(const char *type, int x, int y, int button) {
         "    target: pc || null, currentTarget: pc || null,"
         "    bubbles:true, cancelable:true, composed:true,"
         "    preventDefault:function(){}, stopPropagation:function(){}, stopImmediatePropagation:function(){} };"
-        "  if (pc && pc._listeners && pc._listeners['%s']) {"
-        "    pc._listeners['%s'].slice().forEach(function(cb){ cb(e); });"
+        "  function safeFire(list) {"
+        "    if (!list) return;"
+        "    list.slice().forEach(function(cb){ try { cb(e); } catch(ex) {"
+        "      console.error('[Event:%s]', ex.message || ex); } });"
         "  }"
-        "  if (window._eventListeners && window._eventListeners['%s']) {"
-        "    window._eventListeners['%s'].slice().forEach(function(cb){ cb(e); });"
-        "  }"
-        "  if (typeof document !== 'undefined' && document._listeners && document._listeners['%s']) {"
-        "    document._listeners['%s'].slice().forEach(function(cb){ cb(e); });"
-        "  }"
+        "  if (pc && pc._listeners) safeFire(pc._listeners['%s']);"
+        "  if (window._eventListeners) safeFire(window._eventListeners['%s']);"
+        "  if (typeof document !== 'undefined' && document._listeners) safeFire(document._listeners['%s']);"
         "})();",
         type, x, y, x, y, x, y, x, y, button, button ? 1 : 0,
-        type, type, type, type, type, type);
+        type, type, type, type);
 
     JSCValue *r = jsc_context_evaluate(ctx, js, -1);
     if (r) g_object_unref(r);
+
+    // Clear any JS exception to prevent corruption in subsequent C calls
+    JSCException *exc = jsc_context_get_exception(ctx);
+    if (exc) jsc_context_clear_exception(ctx);
 }
 
 // --- Gamepad/Joystick → Keyboard mapping ---
@@ -327,19 +335,21 @@ void translate_sdl_event(SDL_Event *event) {
                 "  var e = { type:'wheel', deltaX:%d, deltaY:%d, deltaZ:0, deltaMode:0,"
                 "    clientX:0, clientY:0, ctrlKey:false, shiftKey:false, altKey:false,"
                 "    preventDefault:function(){}, stopPropagation:function(){} };"
-                "  if (typeof _primaryCanvas !== 'undefined' && _primaryCanvas && _primaryCanvas._listeners && _primaryCanvas._listeners['wheel']) {"
-                "    _primaryCanvas._listeners['wheel'].slice().forEach(function(cb){ cb(e); });"
+                "  function safeFire(list) {"
+                "    if (!list) return;"
+                "    list.slice().forEach(function(cb){ try { cb(e); } catch(ex) {"
+                "      console.error('[Event:wheel]', ex.message || ex); } });"
                 "  }"
-                "  if (typeof __canvas !== 'undefined' && __canvas._listeners && __canvas._listeners['wheel']) {"
-                "    __canvas._listeners['wheel'].slice().forEach(function(cb){ cb(e); });"
-                "  }"
-                "  if (window._eventListeners && window._eventListeners['wheel']) {"
-                "    window._eventListeners['wheel'].slice().forEach(function(cb){ cb(e); });"
-                "  }"
+                "  var pc = window._primaryCanvas;"
+                "  if (pc && pc._listeners) safeFire(pc._listeners['wheel']);"
+                "  if (typeof __canvas !== 'undefined' && __canvas._listeners) safeFire(__canvas._listeners['wheel']);"
+                "  if (window._eventListeners) safeFire(window._eventListeners['wheel']);"
                 "})();",
                 dx, dy);
             JSCValue *r = jsc_context_evaluate(ctx, js, -1);
             if (r) g_object_unref(r);
+            JSCException *exc = jsc_context_get_exception(ctx);
+            if (exc) jsc_context_clear_exception(ctx);
             break;
         }
         case SDL_JOYBUTTONDOWN:

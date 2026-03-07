@@ -1,4 +1,30 @@
 #include "engine.h"
+#include <openssl/rand.h>
+
+// __cryptoRandomBytes(n) → returns a JS Uint8Array of n cryptographically random bytes
+static JSCValue *native_crypto_random_bytes(GPtrArray *args, gpointer user_data) {
+    JSCContext *ctx = jsc_context_get_current();
+    if (args->len < 1) return jsc_value_new_undefined(ctx);
+
+    int n = jsc_value_to_int32(g_ptr_array_index(args, 0));
+    if (n <= 0 || n > 65536) return jsc_value_new_undefined(ctx);
+
+    unsigned char *buf = g_malloc(n);
+    RAND_bytes(buf, n);
+
+    // Build Uint8Array via evaluate
+    GString *js = g_string_new("new Uint8Array([");
+    for (int i = 0; i < n; i++) {
+        if (i > 0) g_string_append_c(js, ',');
+        g_string_append_printf(js, "%u", buf[i]);
+    }
+    g_string_append(js, "])");
+
+    JSCValue *result = jsc_context_evaluate(ctx, js->str, -1);
+    g_string_free(js, TRUE);
+    g_free(buf);
+    return result;
+}
 
 void register_window_shim(JSCContext *ctx) {
     JSCValue *global = jsc_context_get_global_object(ctx);
@@ -92,4 +118,10 @@ void register_window_shim(JSCContext *ctx) {
         "window.onfocus = null;"
         "window.onresize = null;"
         , -1);
+
+    // Register __cryptoRandomBytes for the crypto polyfill in polyfills.js
+    JSCValue *crfn = jsc_value_new_function_variadic(ctx, "__cryptoRandomBytes",
+        G_CALLBACK(native_crypto_random_bytes), NULL, NULL, JSC_TYPE_VALUE);
+    jsc_context_set_value(ctx, "__cryptoRandomBytes", crfn);
+    g_object_unref(crfn);
 }

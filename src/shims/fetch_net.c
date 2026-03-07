@@ -4,104 +4,132 @@
 
 static SoupSession *http_session = NULL;
 
-// __httpFetch(url, method, body, headers_json) -> { status, body, headers }
-// Async HTTP fetch using libsoup, returns a Promise via JS wrapper
-static JSCValue *native_http_fetch(GPtrArray *args, gpointer user_data) {
+// Async fetch callback: resolve the JS Promise when HTTP completes
+static void on_fetch_complete(GObject *source, GAsyncResult *res, gpointer user_data) {
+    JSCValue *callbacks = (JSCValue *)user_data;
+    JSCContext *ctx = jsc_value_get_context(callbacks);
+
+    JSCValue *resolve = jsc_value_object_get_property(callbacks, "resolve");
+    JSCValue *reject = jsc_value_object_get_property(callbacks, "reject");
+
+    SoupMessage *msg = soup_session_get_async_result_message(SOUP_SESSION(source), res);
+    GError *error = NULL;
+    GBytes *body_bytes = soup_session_send_and_read_finish(SOUP_SESSION(source), res, &error);
+
+    if (error) {
+        JSCValue *err = jsc_value_new_string(ctx, error->message);
+        JSCValue *r = jsc_value_function_call(reject, JSC_TYPE_VALUE, err, G_TYPE_NONE);
+        if (r) g_object_unref(r);
+        g_object_unref(err);
+        g_error_free(error);
+    } else {
+        guint status = soup_message_get_status(msg);
+        gsize len = 0;
+        const char *data = g_bytes_get_data(body_bytes, &len);
+
+        JSCValue *result = jsc_value_new_object(ctx, NULL, NULL);
+        jsc_value_object_set_property(result, "status", jsc_value_new_number(ctx, status));
+        jsc_value_object_set_property(result, "ok",
+            jsc_value_new_boolean(ctx, status >= 200 && status < 300));
+        JSCValue *body_val = jsc_value_new_string(ctx, data ? g_strndup(data, len) : "");
+        jsc_value_object_set_property(result, "body", body_val);
+        g_object_unref(body_val);
+        g_bytes_unref(body_bytes);
+
+        JSCValue *r = jsc_value_function_call(resolve, JSC_TYPE_VALUE, result, G_TYPE_NONE);
+        if (r) g_object_unref(r);
+        g_object_unref(result);
+    }
+
+    g_object_unref(resolve);
+    g_object_unref(reject);
+    g_object_unref(callbacks);
+}
+
+// __httpFetchAsync(url, method, body, resolve, reject)
+// Starts an async HTTP request. Calls resolve/reject when done.
+static void native_http_fetch_async(GPtrArray *args, gpointer user_data) {
+    if (args->len < 5) return;
     JSCContext *ctx = jsc_context_get_current();
-    if (args->len < 1) return jsc_value_new_null(ctx);
 
     char *url = jsc_value_to_string(g_ptr_array_index(args, 0));
-    char *method = args->len > 1 ? jsc_value_to_string(g_ptr_array_index(args, 1)) : g_strdup("GET");
+    char *method = jsc_value_to_string(g_ptr_array_index(args, 1));
+    JSCValue *resolve = g_ptr_array_index(args, 3);
+    JSCValue *reject = g_ptr_array_index(args, 4);
 
     if (!http_session) {
         http_session = soup_session_new();
+        soup_session_set_timeout(http_session, 10);
     }
 
     SoupMessage *msg = soup_message_new(method, url);
     if (!msg) {
         fprintf(stderr, "[Fetch] Invalid URL: %s\n", url);
-        g_free(url);
-        g_free(method);
-        return jsc_value_new_null(ctx);
+        JSCValue *err = jsc_value_new_string(ctx, "Invalid URL");
+        JSCValue *r = jsc_value_function_call(reject, JSC_TYPE_VALUE, err, G_TYPE_NONE);
+        if (r) g_object_unref(r);
+        g_object_unref(err);
+        g_free(url); g_free(method);
+        return;
     }
 
     // Set request body if provided
-    if (args->len > 2 && !jsc_value_is_null(g_ptr_array_index(args, 2)) &&
-        !jsc_value_is_undefined(g_ptr_array_index(args, 2))) {
-        char *body = jsc_value_to_string(g_ptr_array_index(args, 2));
+    JSCValue *body_arg = g_ptr_array_index(args, 2);
+    if (body_arg && !jsc_value_is_null(body_arg) && !jsc_value_is_undefined(body_arg)) {
+        char *body = jsc_value_to_string(body_arg);
         GBytes *body_bytes = g_bytes_new_take(body, strlen(body));
         soup_message_set_request_body_from_bytes(msg, "application/json", body_bytes);
         g_bytes_unref(body_bytes);
     }
 
-    // Perform synchronous request (PeerJS fetch calls are non-critical)
-    GError *error = NULL;
-    GBytes *response = soup_session_send_and_read(http_session, msg, NULL, &error);
+    // Store resolve/reject in an object so we can pass to the callback
+    JSCValue *callbacks = jsc_value_new_object(ctx, NULL, NULL);
+    jsc_value_object_set_property(callbacks, "resolve", resolve);
+    jsc_value_object_set_property(callbacks, "reject", reject);
 
-    JSCValue *result = jsc_value_new_object(ctx, NULL, NULL);
-
-    if (error) {
-        fprintf(stderr, "[Fetch] Error: %s - %s\n", url, error->message);
-        jsc_value_object_set_property(result, "status", jsc_value_new_number(ctx, 0));
-        jsc_value_object_set_property(result, "ok", jsc_value_new_boolean(ctx, FALSE));
-        jsc_value_object_set_property(result, "body", jsc_value_new_string(ctx, ""));
-        g_error_free(error);
-    } else {
-        guint status = soup_message_get_status(msg);
-        gsize len = 0;
-        const char *data = g_bytes_get_data(response, &len);
-        char *body_str = g_strndup(data, len);
-
-        jsc_value_object_set_property(result, "status", jsc_value_new_number(ctx, status));
-        jsc_value_object_set_property(result, "ok", jsc_value_new_boolean(ctx, status >= 200 && status < 300));
-
-        JSCValue *body_val = jsc_value_new_string(ctx, body_str);
-        jsc_value_object_set_property(result, "body", body_val);
-        g_object_unref(body_val);
-        g_free(body_str);
-        g_bytes_unref(response);
-    }
+    // Start async request — completes via g_main_context_iteration in SDL loop
+    soup_session_send_and_read_async(http_session, msg,
+        G_PRIORITY_DEFAULT, NULL, on_fetch_complete, callbacks);
 
     g_object_unref(msg);
     g_free(url);
     g_free(method);
-
-    return result;
 }
 
 void register_fetch_net_shim(JSCContext *ctx) {
-    JSCValue *fn = jsc_value_new_function_variadic(ctx, "__httpFetch",
-        G_CALLBACK(native_http_fetch), NULL, NULL, JSC_TYPE_VALUE);
-    jsc_context_set_value(ctx, "__httpFetch", fn);
+    JSCValue *fn = jsc_value_new_function_variadic(ctx, "__httpFetchAsync",
+        G_CALLBACK(native_http_fetch_async), NULL, NULL, G_TYPE_NONE);
+    jsc_context_set_value(ctx, "__httpFetchAsync", fn);
     g_object_unref(fn);
 
-    // Override fetch to try network first, fall back to file-based fetch
+    // fetch() wrapper: file-based for local paths, async HTTP for URLs
     jsc_context_evaluate(ctx,
         "(function() {"
-        "  var _fileFetch = window.fetch;" // save existing file-based fetch
+        "  var _fileFetch = window.fetch;"
         "  window.fetch = function(url, opts) {"
         "    var urlStr = (typeof url === 'object' && url.href) ? url.href : String(url);"
         "    if (urlStr.indexOf('http://') === 0 || urlStr.indexOf('https://') === 0) {"
+        "      console.log('[Fetch] ' + (opts && opts.method || 'GET') + ' ' + urlStr);"
         "      return new Promise(function(resolve, reject) {"
-        "        try {"
-        "          var method = (opts && opts.method) || 'GET';"
-        "          var body = (opts && opts.body) || null;"
-        "          var result = __httpFetch(urlStr, method, body);"
-        "          if (!result) { reject(new Error('Network error')); return; }"
-        "          var response = {"
-        "            status: result.status,"
-        "            ok: result.ok,"
-        "            headers: new Map(),"
-        "            text: function() { return Promise.resolve(result.body); },"
-        "            json: function() { return Promise.resolve(JSON.parse(result.body)); },"
-        "            arrayBuffer: function() {"
-        "              var enc = new TextEncoder();"
-        "              return Promise.resolve(enc.encode(result.body).buffer);"
-        "            },"
-        "            blob: function() { return Promise.resolve(new Blob([result.body])); }"
-        "          };"
-        "          resolve(response);"
-        "        } catch(e) { reject(e); }"
+        "        var method = (opts && opts.method) || 'GET';"
+        "        var body = (opts && opts.body) || null;"
+        "        __httpFetchAsync(urlStr, method, body,"
+        "          function(result) {"
+        "            resolve({"
+        "              status: result.status,"
+        "              ok: result.ok,"
+        "              headers: new Map(),"
+        "              text: function() { return Promise.resolve(result.body); },"
+        "              json: function() { return Promise.resolve(JSON.parse(result.body)); },"
+        "              arrayBuffer: function() {"
+        "                var enc = new TextEncoder();"
+        "                return Promise.resolve(enc.encode(result.body).buffer);"
+        "              },"
+        "              blob: function() { return Promise.resolve(new Blob([result.body])); }"
+        "            });"
+        "          },"
+        "          function(err) { reject(new Error(String(err))); }"
+        "        );"
         "      });"
         "    }"
         "    return _fileFetch ? _fileFetch(url, opts) : Promise.reject(new Error('No fetch handler for: ' + urlStr));"

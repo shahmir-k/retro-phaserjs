@@ -304,6 +304,13 @@ int main(int argc, char *argv[]) {
         frame++;
         double now_ms = engine_now_ms();
 
+        // Pump GLib main context for async HTTP callbacks (libsoup)
+        // Note: single iteration, not while-loop, to avoid blocking on busy contexts
+        g_main_context_iteration(NULL, FALSE);
+
+        // Debug: log every 300 frames to stderr to detect hangs
+        if (frame % 300 == 0) fprintf(stderr, "[Loop] frame=%d\n", frame);
+
         // Poll events
         SDL_Event ev;
         while (SDL_PollEvent(&ev)) {

@@ -1750,6 +1750,32 @@ if (typeof queueMicrotask === 'undefined') {
     };
 }
 
+// --- crypto (Web Crypto API) ---
+// Uses OpenSSL RAND_bytes() via native __cryptoRandomBytes(n) for real CSPRNG
+if (typeof crypto === 'undefined') {
+    var _crypto = {
+        getRandomValues: function(array) {
+            var bytes = __cryptoRandomBytes(array.byteLength);
+            var src = new Uint8Array(bytes.buffer || bytes);
+            var dst = new Uint8Array(array.buffer, array.byteOffset, array.byteLength);
+            for (var i = 0; i < dst.length; i++) dst[i] = src[i];
+            return array;
+        },
+        randomUUID: function() {
+            var buf = new Uint8Array(16);
+            _crypto.getRandomValues(buf);
+            buf[6] = (buf[6] & 0x0f) | 0x40; // version 4
+            buf[8] = (buf[8] & 0x3f) | 0x80; // variant 1
+            var hex = '';
+            for (var i = 0; i < 16; i++) hex += (buf[i] < 16 ? '0' : '') + buf[i].toString(16);
+            return hex.slice(0,8) + '-' + hex.slice(8,12) + '-' + hex.slice(12,16) + '-' + hex.slice(16,20) + '-' + hex.slice(20);
+        },
+        subtle: {}
+    };
+    window.crypto = _crypto;
+    if (typeof self !== 'undefined') self.crypto = _crypto;
+}
+
 // --- window.history ---
 if (typeof window.history === 'undefined') {
     window.history = {
