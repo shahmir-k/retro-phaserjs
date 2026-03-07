@@ -117,13 +117,15 @@ static void eval_file(JSCContext *ctx, const char *path) {
 
 int main(int argc, char *argv[]) {
     if (argc < 2) {
-        fprintf(stderr, "Usage: %s <game_dir_or_js_file> [width height] [--fullscreen] [--screenshot <frame>]\n", argv[0]);
+        fprintf(stderr, "Usage: %s <game_dir_or_js_file> [width height] [--fullscreen] [--screenshot <frame>] [--phaser <version>]\n", argv[0]);
+        fprintf(stderr, "  --phaser <version>  Set Phaser version hint (e.g. 3, 3.19, 4, auto)\n");
         return 1;
     }
 
     int width = 640, height = 480;
     bool fullscreen = false;
     int screenshot_frame = 0; // 0 = disabled
+    const char *phaser_version = "auto"; // auto-detect by default
 
     // Parse arguments
     const char *input = argv[1];
@@ -132,6 +134,8 @@ int main(int argc, char *argv[]) {
             fullscreen = true;
         } else if (strcmp(argv[i], "--screenshot") == 0 && i + 1 < argc) {
             screenshot_frame = atoi(argv[++i]);
+        } else if (strcmp(argv[i], "--phaser") == 0 && i + 1 < argc) {
+            phaser_version = argv[++i];
         } else if (i == 2 && atoi(argv[i]) > 0) {
             width = atoi(argv[i]);
             if (i + 1 < argc && atoi(argv[i+1]) > 0) {
@@ -182,6 +186,13 @@ int main(int argc, char *argv[]) {
 
     engine_init(width, height, game_dir, game_name, fullscreen);
     free(dir_copy);
+
+    // Set Phaser version hint for runtime
+    char phaser_init[256];
+    snprintf(phaser_init, sizeof(phaser_init),
+        "window.__phaserVersionHint = '%s';", phaser_version);
+    JSCValue *pv = jsc_context_evaluate(g_engine.js_ctx, phaser_init, -1);
+    if (pv) g_object_unref(pv);
 
     // Load polyfills
     eval_file(g_engine.js_ctx, "runtime/polyfills.js");
@@ -243,31 +254,40 @@ int main(int argc, char *argv[]) {
         }
     }
 
-    // Patch Phaser compatibility issues between versions
+    // Detect and report Phaser version, apply version-specific patches
     JSCValue *patch_result = jsc_context_evaluate(g_engine.js_ctx,
         "(function() {"
         "  if (typeof Phaser === 'undefined') return;"
-        "  var A = Phaser.Physics && Phaser.Physics.Arcade;"
-        "  if (!A) return;"
-        // StaticBody: add methods that only exist on dynamic Body
-        "  var SB = A.StaticBody && A.StaticBody.prototype;"
-        "  if (SB) {"
-        "    if (!SB.setCollideWorldBounds) SB.setCollideWorldBounds = function(v) { this.collideWorldBounds = !!v; return this; };"
-        "    if (!SB.setImmovable) SB.setImmovable = function() { return this; };"
-        "    if (!SB.setAllowGravity) SB.setAllowGravity = function() { return this; };"
-        "    if (!SB.setVelocity) SB.setVelocity = function() { return this; };"
-        "    if (!SB.setVelocityX) SB.setVelocityX = function() { return this; };"
-        "    if (!SB.setVelocityY) SB.setVelocityY = function() { return this; };"
-        "    if (!SB.setBounce) SB.setBounce = function() { return this; };"
-        "    if (!SB.setBounceX) SB.setBounceX = function() { return this; };"
-        "    if (!SB.setBounceY) SB.setBounceY = function() { return this; };"
-        "    if (!SB.setAcceleration) SB.setAcceleration = function() { return this; };"
-        "    if (!SB.setDrag) SB.setDrag = function() { return this; };"
-        "    if (!SB.setFriction) SB.setFriction = function() { return this; };"
-        "    if (!SB.setMaxVelocity) SB.setMaxVelocity = function() { return this; };"
-        "    if (!SB.setGravity) SB.setGravity = function() { return this; };"
-        "    if (!SB.setGravityY) SB.setGravityY = function() { return this; };"
-        "    if (!SB.setMass) SB.setMass = function() { return this; };"
+        "  var ver = Phaser.VERSION || 'unknown';"
+        "  var hint = window.__phaserVersionHint || 'auto';"
+        "  var major = parseInt(ver);"
+        "  if (hint !== 'auto') major = parseInt(hint);"
+        "  window.__phaserMajor = major;"
+        "  console.log('[TinyPhaser] Phaser ' + ver + ' detected (hint: ' + hint + ', major: ' + major + ')');"
+        // Phaser 3.x patches
+        "  if (major === 3) {"
+        "    var A = Phaser.Physics && Phaser.Physics.Arcade;"
+        "    if (A) {"
+        "      var SB = A.StaticBody && A.StaticBody.prototype;"
+        "      if (SB) {"
+        "        if (!SB.setCollideWorldBounds) SB.setCollideWorldBounds = function(v) { this.collideWorldBounds = !!v; return this; };"
+        "        if (!SB.setImmovable) SB.setImmovable = function() { return this; };"
+        "        if (!SB.setAllowGravity) SB.setAllowGravity = function() { return this; };"
+        "        if (!SB.setVelocity) SB.setVelocity = function() { return this; };"
+        "        if (!SB.setVelocityX) SB.setVelocityX = function() { return this; };"
+        "        if (!SB.setVelocityY) SB.setVelocityY = function() { return this; };"
+        "        if (!SB.setBounce) SB.setBounce = function() { return this; };"
+        "        if (!SB.setBounceX) SB.setBounceX = function() { return this; };"
+        "        if (!SB.setBounceY) SB.setBounceY = function() { return this; };"
+        "        if (!SB.setAcceleration) SB.setAcceleration = function() { return this; };"
+        "        if (!SB.setDrag) SB.setDrag = function() { return this; };"
+        "        if (!SB.setFriction) SB.setFriction = function() { return this; };"
+        "        if (!SB.setMaxVelocity) SB.setMaxVelocity = function() { return this; };"
+        "        if (!SB.setGravity) SB.setGravity = function() { return this; };"
+        "        if (!SB.setGravityY) SB.setGravityY = function() { return this; };"
+        "        if (!SB.setMass) SB.setMass = function() { return this; };"
+        "      }"
+        "    }"
         "  }"
         "})();"
         , -1);
