@@ -1,5 +1,5 @@
 cmake_minimum_required(VERSION 3.16)
-project(phaserquest C)
+project(tinyphaser C)
 
 set(CMAKE_C_STANDARD 11)
 set(CMAKE_C_STANDARD_REQUIRED ON)
@@ -50,9 +50,9 @@ set(SOURCES
     src/util/file_utils.c
 )
 
-add_executable(phaserquest ${SOURCES})
+add_executable(tinyphaser ${SOURCES})
 
-target_include_directories(phaserquest PRIVATE
+target_include_directories(tinyphaser PRIVATE
     ${CMAKE_SOURCE_DIR}/src
     ${CMAKE_SOURCE_DIR}/third_party
     ${DATACHANNEL_DIR}/include
@@ -64,7 +64,7 @@ target_include_directories(phaserquest PRIVATE
     ${SOUP_INCLUDE_DIRS}
 )
 
-target_link_libraries(phaserquest
+target_link_libraries(tinyphaser
     ${DATACHANNEL_LIB}
     ${JUICE_LIB}
     ${USRSCTP_LIB}
@@ -79,11 +79,11 @@ target_link_libraries(phaserquest
     m
 )
 
-target_compile_options(phaserquest PRIVATE -Wall -Wextra -Wno-unused-parameter)
-target_compile_definitions(phaserquest PRIVATE RTC_STATIC)
+target_compile_options(tinyphaser PRIVATE -Wall -Wextra -Wno-unused-parameter)
+target_compile_definitions(tinyphaser PRIVATE RTC_STATIC)
 
 # Copy runtime files to build directory on every build
-add_custom_command(TARGET phaserquest POST_BUILD
+add_custom_command(TARGET tinyphaser POST_BUILD
     COMMAND ${CMAKE_COMMAND} -E copy_directory
         ${CMAKE_SOURCE_DIR}/runtime ${CMAKE_BINARY_DIR}/runtime
     COMMAND ${CMAKE_COMMAND} -E copy_directory

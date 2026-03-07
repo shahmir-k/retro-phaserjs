@@ -42,7 +42,7 @@ void engine_init(int screen_w, int screen_h, const char *game_dir, bool fullscre
     Uint32 win_flags = SDL_WINDOW_OPENGL | SDL_WINDOW_SHOWN;
     if (fullscreen) win_flags |= SDL_WINDOW_FULLSCREEN_DESKTOP;
 
-    e->window = SDL_CreateWindow("PhaserQuest",
+    e->window = SDL_CreateWindow("TinyPhaser",
         SDL_WINDOWPOS_CENTERED, SDL_WINDOWPOS_CENTERED,
         screen_w, screen_h,
         win_flags);

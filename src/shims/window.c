@@ -24,7 +24,7 @@ void register_window_shim(JSCContext *ctx) {
 
     // navigator
     JSCValue *nav = jsc_value_new_object(ctx, NULL, NULL);
-    JSCValue *ua = jsc_value_new_string(ctx, "PhaserQuest/1.0 (Linux; SDL2)");
+    JSCValue *ua = jsc_value_new_string(ctx, "TinyPhaser/1.0 (Linux; SDL2)");
     JSCValue *lang = jsc_value_new_string(ctx, "en");
     JSCValue *plat = jsc_value_new_string(ctx, "Linux");
     JSCValue *gc_val = jsc_value_new_number(ctx, 4);
@@ -33,7 +33,7 @@ void register_window_shim(JSCContext *ctx) {
     jsc_value_object_set_property(nav, "platform", plat);
     jsc_value_object_set_property(nav, "hardwareConcurrency", gc_val);
     jsc_value_object_set_property(nav, "maxTouchPoints", jsc_value_new_number(ctx, 1));
-    jsc_value_object_set_property(nav, "appVersion", jsc_value_new_string(ctx, "5.0 (Linux; SDL2) PhaserQuest/1.0"));
+    jsc_value_object_set_property(nav, "appVersion", jsc_value_new_string(ctx, "5.0 (Linux; SDL2) TinyPhaser/1.0"));
     jsc_value_object_set_property(nav, "standalone", jsc_value_new_boolean(ctx, FALSE));
     jsc_value_object_set_property(nav, "pointerEnabled", jsc_value_new_boolean(ctx, TRUE));
     jsc_value_object_set_property(nav, "msPointerEnabled", jsc_value_new_boolean(ctx, FALSE));

@@ -1,4 +1,4 @@
-# PhaserQuest v2: JSC + SDL2 Native Phaser.js Runtime for muOS
+# TinyPhaser: JSC + SDL2 Native Phaser.js Runtime for muOS
 
 ## Project Overview
 
@@ -296,7 +296,7 @@ window.innerWidth          → SDL_GetWindowSize() width
 window.innerHeight         → SDL_GetWindowSize() height
 window.devicePixelRatio    → 1.0 (handheld screens are 1:1)
 window.location            → { href: "file:///game/", protocol: "file:" }
-window.navigator           → { userAgent: "PhaserQuest/1.0", language: "en" }
+window.navigator           → { userAgent: "TinyPhaser/1.0", language: "en" }
 window.performance.now()   → SDL_GetPerformanceCounter() based, microsecond precision
 window.document            → the document shim
 
@@ -568,7 +568,7 @@ int main(int argc, char *argv[]) {
     SDL_GL_SetAttribute(SDL_GL_DOUBLEBUFFER, 1);
     
     int screen_w = 640, screen_h = 480;  // detect from muOS display config
-    SDL_Window *win = SDL_CreateWindow("PhaserQuest",
+    SDL_Window *win = SDL_CreateWindow("TinyPhaser",
         SDL_WINDOWPOS_CENTERED, SDL_WINDOWPOS_CENTERED,
         screen_w, screen_h,
         SDL_WINDOW_OPENGL | SDL_WINDOW_SHOWN | SDL_WINDOW_FULLSCREEN);
@@ -707,7 +707,7 @@ setenv("JSC_useGenerationSize", "1048576", 1);  // 1MB generations
 ### Project Structure
 
 ```
-phaserquest/
+tinyphaser/
 ├── CMakeLists.txt              # Top-level: builds JSC, then our runtime
 ├── toolchain-aarch64-muos.cmake # Cross-compilation toolchain file
 ├── src/

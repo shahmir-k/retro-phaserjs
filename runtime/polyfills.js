@@ -1,4 +1,4 @@
-// PhaserQuest Runtime Polyfills
+// TinyPhaser Runtime Polyfills
 // Provides browser APIs that JSC doesn't have natively
 
 // --- Safe callback wrappers ---
@@ -1583,4 +1583,4 @@ if (typeof __canvas !== 'undefined') {
 window.HTMLCanvasElement = window.HTMLCanvasElement || function() {};
 HTMLCanvasElement.prototype = HTMLCanvasElement.prototype || {};
 
-console.log('[PhaserQuest] Polyfills loaded');
+console.log('[TinyPhaser] Polyfills loaded');
