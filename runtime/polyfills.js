@@ -97,6 +97,8 @@ SoftCanvas2D.prototype._ensureBuffer = function() {
     if (!this._buffer || this._buffer.length !== size) {
         this._arrayBuffer = new ArrayBuffer(size);
         this._buffer = new Uint8ClampedArray(this._arrayBuffer);
+        // Expose pixel data directly on canvas for WebGL texImage2D extraction
+        this.canvas._pixelData = this._arrayBuffer;
     }
 };
 
