@@ -360,17 +360,16 @@ int main(int argc, char *argv[]) {
         // Fire requestAnimationFrame callbacks
         fire_raf_callbacks(now_ms);
 
-        // Screenshot: capture from FBO (game resolution) or screen
+        // Blit FBO to screen if using offscreen rendering
+        engine_blit_fbo();
+
+        // Render HTML overlay (litehtml → Cairo → GL texture)
+        dom_bridge_render();
+
+        // Screenshot: capture final composited output from default framebuffer
         if (screenshot_frame > 0 && frame == screenshot_frame) {
-            int sw, sh;
-            if (g_engine.fbo) {
-                sw = g_engine.render_w;
-                sh = g_engine.render_h;
-                glBindFramebuffer(GL_FRAMEBUFFER, g_engine.fbo);
-            } else {
-                sw = g_engine.screen_w;
-                sh = g_engine.screen_h;
-            }
+            int sw = g_engine.screen_w, sh = g_engine.screen_h;
+            glBindFramebuffer(GL_FRAMEBUFFER, 0);
             uint8_t *px = malloc(sw * sh * 4);
             glReadPixels(0, 0, sw, sh, GL_RGBA, GL_UNSIGNED_BYTE, px);
             FILE *f = fopen("screenshot.ppm", "wb");
@@ -387,9 +386,6 @@ int main(int argc, char *argv[]) {
             free(px);
             g_engine.running = false;
         }
-
-        // Blit FBO to screen if using offscreen rendering
-        engine_blit_fbo();
 
         SDL_GL_SwapWindow(g_engine.window);
     }
