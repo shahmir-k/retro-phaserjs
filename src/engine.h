@@ -98,6 +98,7 @@ void register_websocket_shim(JSCContext *ctx);
 void register_webrtc_shim(JSCContext *ctx);
 void register_fetch_net_shim(JSCContext *ctx);
 void register_dom_bridge_shim(JSCContext *ctx);
+void register_webaudio_shim(JSCContext *ctx);
 void dom_bridge_load_html(JSCContext *ctx, const char *html);
 void dom_bridge_shutdown(void);
 

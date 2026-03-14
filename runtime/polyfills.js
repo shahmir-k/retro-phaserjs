@@ -1515,7 +1515,44 @@ if (typeof document !== 'undefined') {
 // --- Missing browser globals ---
 window.alert = window.alert || function(msg) { console.log('[alert] ' + msg); };
 window.confirm = window.confirm || function(msg) { console.log('[confirm] ' + msg); return true; };
-window.prompt = window.prompt || function(msg) { console.log('[prompt] ' + msg); return null; };
+window.prompt = window.prompt || function(msg, def) { console.log('[prompt] ' + msg); return def || null; };
+
+// --- PeerJS stub (allows single-player when CDN is unavailable) ---
+if (typeof window.Peer === 'undefined') {
+    window.Peer = function(id, opts) {
+        this._id = id || ('tp-' + Math.random().toString(36).substr(2, 8));
+        this._handlers = {};
+        this._destroyed = false;
+        var self = this;
+        // Fire 'open' event asynchronously so listeners can be attached
+        setTimeout(function() {
+            if (self._handlers['open']) {
+                self._handlers['open'].forEach(function(cb) { cb(self._id); });
+            }
+        }, 100);
+    };
+    window.Peer.prototype.on = function(event, cb) {
+        if (!this._handlers[event]) this._handlers[event] = [];
+        this._handlers[event].push(cb);
+        return this;
+    };
+    window.Peer.prototype.connect = function(peerId, opts) {
+        var conn = { _handlers: {}, peer: peerId, open: false,
+            on: function(ev, cb) { if (!this._handlers[ev]) this._handlers[ev] = []; this._handlers[ev].push(cb); return this; },
+            send: function() {},
+            close: function() { if (this._handlers['close']) this._handlers['close'].forEach(function(cb) { cb(); }); }
+        };
+        // Simulate connection failure after a short delay
+        setTimeout(function() {
+            if (conn._handlers['error']) {
+                conn._handlers['error'].forEach(function(cb) { cb({ type: 'network' }); });
+            }
+        }, 2000);
+        return conn;
+    };
+    window.Peer.prototype.destroy = function() { this._destroyed = true; };
+    window.Peer.prototype.disconnect = function() {};
+}
 window.focus = window.focus || function() {};
 window.blur = window.blur || function() {};
 

@@ -51,6 +51,7 @@ set(SOURCES
     src/shims/xhr.c
     src/shims/events.c
     src/shims/audio.c
+    src/shims/webaudio.c
     src/shims/text.c
     src/shims/websocket.c
     src/shims/webrtc.c

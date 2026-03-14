@@ -92,6 +92,7 @@ void engine_init(int screen_w, int screen_h, const char *game_dir, const char *g
     register_xhr_shim(e->js_ctx);
     register_events_shim(e->js_ctx);
     register_audio_shim(e->js_ctx);
+    register_webaudio_shim(e->js_ctx);
     register_text_shim(e->js_ctx);
     register_websocket_shim(e->js_ctx);
     register_webrtc_shim(e->js_ctx);
