@@ -1,6 +1,52 @@
 #include "engine.h"
 #include <string.h>
 #include <libgen.h>
+#include <libsoup/soup.h>
+
+// Synchronous HTTP GET — downloads a URL and returns malloc'd content (caller frees).
+// Returns NULL on failure. Sets *out_len if non-NULL.
+static char *http_get_sync(const char *url, size_t *out_len) {
+    SoupSession *session = soup_session_new();
+    soup_session_set_timeout(session, 30);
+
+    SoupMessage *msg = soup_message_new("GET", url);
+    if (!msg) {
+        fprintf(stderr, "[HTTP] Invalid URL: %s\n", url);
+        g_object_unref(session);
+        return NULL;
+    }
+
+    GError *error = NULL;
+    GBytes *body = soup_session_send_and_read(session, msg, NULL, &error);
+
+    char *result = NULL;
+    if (error) {
+        fprintf(stderr, "[HTTP] Failed to fetch %s: %s\n", url, error->message);
+        g_error_free(error);
+    } else {
+        guint status = soup_message_get_status(msg);
+        if (status >= 200 && status < 300) {
+            gsize len = 0;
+            const char *data = g_bytes_get_data(body, &len);
+            result = malloc(len + 1);
+            memcpy(result, data, len);
+            result[len] = '\0';
+            if (out_len) *out_len = len;
+            printf("[HTTP] Downloaded %s (%zu bytes)\n", url, len);
+        } else {
+            fprintf(stderr, "[HTTP] %s returned status %u\n", url, status);
+        }
+        g_bytes_unref(body);
+    }
+
+    g_object_unref(msg);
+    g_object_unref(session);
+    return result;
+}
+
+static int is_http_url(const char *s) {
+    return (strncmp(s, "http://", 7) == 0 || strncmp(s, "https://", 8) == 0);
+}
 
 // Script entry: either a file path (src != NULL) or inline code (code != NULL)
 typedef struct {
@@ -220,13 +266,61 @@ int main(int argc, char *argv[]) {
         if (scripts) {
             for (int i = 0; i < script_count; i++) {
                 if (scripts[i].src) {
-                    char full_path[2048];
-                    if (scripts[i].src[0] == '/') {
-                        snprintf(full_path, sizeof(full_path), "%s", scripts[i].src);
+                    if (is_http_url(scripts[i].src)) {
+                        // Download remote script via HTTP
+                        size_t dl_len = 0;
+                        char *dl_code = http_get_sync(scripts[i].src, &dl_len);
+                        if (dl_code) {
+                            printf("[Engine] Evaluating: %s (%zu bytes)\n", scripts[i].src, dl_len);
+                            JSCValue *r = jsc_context_evaluate_with_source_uri(
+                                g_engine.js_ctx, dl_code, -1, scripts[i].src, 1);
+                            if (r) g_object_unref(r);
+                            JSCException *exc = jsc_context_get_exception(g_engine.js_ctx);
+                            if (exc) {
+                                fprintf(stderr, "[JS Error] %s: %s\n",
+                                    scripts[i].src, jsc_exception_get_message(exc));
+                                jsc_context_clear_exception(g_engine.js_ctx);
+                            }
+                            free(dl_code);
+
+                            // After loading Phaser, patch Game constructor to force WebGL
+                            // (we don't have Canvas2D renderer, only WebGL)
+                            if (strstr(scripts[i].src, "phaser")) {
+                                jsc_context_evaluate(g_engine.js_ctx,
+                                    "(function() {"
+                                    "  if (typeof Phaser === 'undefined') return;"
+                                    "  var _OrigGame = Phaser.Game;"
+                                    "  var _PhaserGame = function(config) {"
+                                    "    if (config && (config.type === 1 || config.type === Phaser.CANVAS)) {"
+                                    "      console.log('[TinyPhaser] Overriding Canvas mode -> WebGL');"
+                                    "      config.type = Phaser.WEBGL || 2;"
+                                    "    }"
+                                    "    return _OrigGame.call(this, config);"
+                                    "  };"
+                                    "  _PhaserGame.prototype = _OrigGame.prototype;"
+                                    "  _PhaserGame.prototype.constructor = _PhaserGame;"
+                                    // Copy static properties from original Phaser.Game
+                                    "  Object.keys(_OrigGame).forEach(function(k) {"
+                                    "    _PhaserGame[k] = _OrigGame[k];"
+                                    "  });"
+                                    "  Phaser.Game = _PhaserGame;"
+                                    "  console.log('[TinyPhaser] Phaser.Game patched for WebGL mode');"
+                                    "})();"
+                                    , -1);
+                                jsc_context_clear_exception(g_engine.js_ctx);
+                            }
+                        } else {
+                            fprintf(stderr, "[Engine] Failed to download: %s\n", scripts[i].src);
+                        }
                     } else {
-                        snprintf(full_path, sizeof(full_path), "%s/%s", game_dir, scripts[i].src);
+                        char full_path[2048];
+                        if (scripts[i].src[0] == '/') {
+                            snprintf(full_path, sizeof(full_path), "%s", scripts[i].src);
+                        } else {
+                            snprintf(full_path, sizeof(full_path), "%s/%s", game_dir, scripts[i].src);
+                        }
+                        eval_file(g_engine.js_ctx, full_path);
                     }
-                    eval_file(g_engine.js_ctx, full_path);
                     free(scripts[i].src);
                 } else if (scripts[i].code) {
                     printf("[Engine] Evaluating: <inline script> (%zu bytes)\n", strlen(scripts[i].code));
@@ -364,7 +458,11 @@ int main(int argc, char *argv[]) {
         engine_blit_fbo();
 
         // Render HTML overlay (litehtml → Cairo → GL texture)
-        dom_bridge_render();
+        // Only render when no game FBO is active (HTML-only games like Rivals).
+        // When Phaser/WebGL games run, they manage their own canvas rendering.
+        if (!g_engine.fbo) {
+            dom_bridge_render();
+        }
 
         // Screenshot: capture final composited output from default framebuffer
         if (screenshot_frame > 0 && frame == screenshot_frame) {
