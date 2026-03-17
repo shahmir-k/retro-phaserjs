@@ -1,0 +1,38 @@
+{
+  "name": "rivals",
+  "version": "1.0.0",
+  "description": "RIVALS - 2D Shooter Desktop Game",
+  "main": "main.js",
+  "scripts": {
+    "start": "electron .",
+    "build": "electron-builder"
+  },
+  "devDependencies": {
+    "electron": "^35.0.0",
+    "electron-builder": "^25.0.0",
+    "png-to-ico": "^3.0.1",
+    "sharp": "^0.34.5",
+    "to-ico": "^1.1.5"
+  },
+  "build": {
+    "appId": "com.rivals.game",
+    "productName": "RIVALS",
+    "files": [
+      "index.html",
+      "main.js",
+      "icon.ico"
+    ],
+    "win": {
+      "target": "nsis",
+      "icon": "icon.ico",
+      "signAndEditExecutable": false
+    },
+    "nsis": {
+      "oneClick": true,
+      "deleteAppDataOnUninstall": true
+    },
+    "directories": {
+      "output": "dist"
+    }
+  }
+}

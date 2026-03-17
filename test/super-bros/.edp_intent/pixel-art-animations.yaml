@@ -1,0 +1,67 @@
+version: "1.0.0"
+generatedBy: "edp-6-mcp"
+timestamp: "2026-01-24T10:30:00Z"
+originalIntent: "add special attacks and make the characters animated and make the characters cool and pixeled with custom models and animations"
+
+scope:
+  allowedPaths:
+    - "js/scenes/BootScene.js"
+    - "js/scenes/GameScene.js"
+  forbiddenPaths:
+    - "js/constants.js"
+    - "js/arenas.js"
+    - "index.html"
+  newFiles: []
+
+apiContracts:
+  - name: "generateCharacterSpritesheet"
+    type: "function"
+    params:
+      - name: "character"
+        type: "object"
+    returns: "void"
+    required: true
+  - name: "createAnimations"
+    type: "function"
+    params: []
+    returns: "void"
+    required: true
+
+acceptanceCriteria:
+  - id: "AC-001"
+    description: "Characters display as pixel art"
+    given: "Game is running"
+    when: "Characters are rendered"
+    then: "Characters appear pixelated with distinct features"
+  - id: "AC-002"
+    description: "Characters animate when idle"
+    given: "Fighter is standing still"
+    when: "No input"
+    then: "Idle animation plays (breathing/bobbing)"
+  - id: "AC-003"
+    description: "Characters animate when moving"
+    given: "Player presses movement key"
+    when: "Fighter moves"
+    then: "Walk animation plays"
+  - id: "AC-004"
+    description: "Attack animations play"
+    given: "Player attacks"
+    when: "Attack input received"
+    then: "Attack animation plays with visual effect"
+  - id: "AC-005"
+    description: "Special attacks have unique visuals"
+    given: "Player uses special"
+    when: "Special input received"
+    then: "Character-specific special effect displays"
+
+nonGoals:
+  - "Adding sound effects"
+  - "Creating new characters"
+  - "Changing game mechanics"
+  - "External asset files"
+
+complexityBudget:
+  maxNewFunctions: 5
+  maxNewFiles: 0
+  maxLinesOfCode: 400
+  maxDependencies: 0

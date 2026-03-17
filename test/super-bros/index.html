@@ -1,0 +1,889 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>Super Bros - Platform Fighter</title>
+    <style>
+        html, body {
+            width: 100%;
+            height: 100%;
+            margin: 0;
+            padding: 0;
+        }
+
+        * {
+            margin: 0;
+            padding: 0;
+            box-sizing: border-box;
+        }
+
+        body {
+            background: linear-gradient(135deg, #667eea 0%, #764ba2 50%, #f093fb 100%);
+            background-size: 400% 400%;
+            animation: gradientShift 15s ease infinite;
+            display: flex;
+            justify-content: center;
+            align-items: center;
+            min-height: 100vh;
+            font-family: 'Segoe UI', Tahoma, Geneva, Verdana, sans-serif;
+            overflow: hidden;
+        }
+
+        @keyframes gradientShift {
+            0% { background-position: 0% 50%; }
+            50% { background-position: 100% 50%; }
+            100% { background-position: 0% 50%; }
+        }
+
+        #game-container {
+            background: #2a2a4e !important;
+            border: 4px solid #00ffff;
+            border-radius: 8px;
+            box-shadow: 0 0 40px rgba(0, 255, 255, 0.6), 0 0 80px rgba(255, 0, 255, 0.3);
+            animation: containerGlow 3s ease-in-out infinite;
+        }
+
+        @keyframes containerGlow {
+            0%, 100% { box-shadow: 0 0 40px rgba(0, 255, 255, 0.6), 0 0 80px rgba(255, 0, 255, 0.3); }
+            50% { box-shadow: 0 0 60px rgba(0, 255, 255, 0.8), 0 0 100px rgba(255, 0, 255, 0.5); }
+        }
+
+        #game-container canvas {
+            display: block;
+            background: #2a2a4e !important;
+        }
+
+        #loading {
+            position: absolute;
+            top: 50%;
+            left: 50%;
+            transform: translate(-50%, -50%);
+            color: #00ffff;
+            font-size: 28px;
+            font-weight: bold;
+            text-align: center;
+            text-shadow: 0 0 20px rgba(0, 255, 255, 0.8), 0 0 40px rgba(255, 0, 255, 0.5);
+            animation: loadingPulse 2s ease-in-out infinite;
+        }
+
+        @keyframes loadingPulse {
+            0%, 100% { transform: translate(-50%, -50%) scale(1); opacity: 1; }
+            50% { transform: translate(-50%, -50%) scale(1.1); opacity: 0.8; }
+        }
+
+        .controls-info {
+            position: fixed;
+            bottom: 10px;
+            left: 50%;
+            transform: translateX(-50%);
+            color: #00ffff;
+            font-size: 13px;
+            font-weight: bold;
+            text-align: center;
+            text-shadow: 0 0 10px rgba(0, 255, 255, 0.8);
+            background: rgba(0, 0, 0, 0.5);
+            padding: 8px 16px;
+            border-radius: 20px;
+            border: 2px solid rgba(0, 255, 255, 0.3);
+        }
+
+        /* ── Theme Switcher UI ── */
+        .theme-switcher {
+            position: fixed;
+            top: 10px;
+            right: 10px;
+            display: flex;
+            align-items: center;
+            gap: 6px;
+            background: rgba(0, 0, 0, 0.55);
+            padding: 6px 12px;
+            border-radius: 20px;
+            border: 2px solid rgba(0, 255, 255, 0.3);
+            z-index: 1000;
+        }
+
+        .theme-switcher label {
+            color: #00ffff;
+            font-size: 12px;
+            font-weight: bold;
+            text-shadow: 0 0 8px rgba(0, 255, 255, 0.7);
+            white-space: nowrap;
+        }
+
+        .theme-switcher select {
+            background: rgba(0, 0, 0, 0.7);
+            color: #00ffff;
+            border: 1px solid rgba(0, 255, 255, 0.5);
+            border-radius: 8px;
+            padding: 3px 6px;
+            font-size: 12px;
+            font-family: inherit;
+            cursor: pointer;
+            outline: none;
+        }
+
+        .theme-switcher select:hover {
+            border-color: #00ffff;
+        }
+
+        /* ── DARK (Matrix) theme ── */
+        body.dark-theme {
+            background: linear-gradient(135deg, #050505 0%, #0d1117 50%, #1a2332 100%) !important;
+            animation: none !important;
+        }
+        body.dark-theme #game-container {
+            border-color: #00ff41 !important;
+            box-shadow: 0 0 40px rgba(0, 255, 65, 0.5), 0 0 80px rgba(0, 200, 40, 0.25) !important;
+            animation: none !important;
+        }
+        body.dark-theme .controls-info {
+            color: #00ff41;
+            text-shadow: 0 0 10px rgba(0, 255, 65, 0.8);
+            border-color: rgba(0, 255, 65, 0.3);
+        }
+        body.dark-theme #loading {
+            color: #00ff41;
+            text-shadow: 0 0 20px rgba(0, 255, 65, 0.8), 0 0 40px rgba(0, 180, 30, 0.5);
+        }
+        body.dark-theme .theme-switcher {
+            border-color: rgba(0, 255, 65, 0.3);
+        }
+        body.dark-theme .theme-switcher label {
+            color: #00ff41;
+            text-shadow: 0 0 8px rgba(0, 255, 65, 0.7);
+        }
+        body.dark-theme .theme-switcher select {
+            color: #00ff41;
+            border-color: rgba(0, 255, 65, 0.5);
+        }
+
+        /* ── FIRE theme ── */
+        body.fire-theme {
+            background: linear-gradient(135deg, #1a0000 0%, #5c1100 50%, #cc3300 100%) !important;
+            animation: none !important;
+        }
+        body.fire-theme #game-container {
+            border-color: #ff6600 !important;
+            box-shadow: 0 0 40px rgba(255, 80, 0, 0.6), 0 0 80px rgba(255, 30, 0, 0.3) !important;
+            animation: none !important;
+        }
+        body.fire-theme .controls-info {
+            color: #ffaa00;
+            text-shadow: 0 0 10px rgba(255, 140, 0, 0.8);
+            border-color: rgba(255, 100, 0, 0.4);
+        }
+        body.fire-theme #loading {
+            color: #ff8800;
+            text-shadow: 0 0 20px rgba(255, 100, 0, 0.8), 0 0 40px rgba(255, 30, 0, 0.5);
+        }
+        body.fire-theme .theme-switcher {
+            border-color: rgba(255, 100, 0, 0.4);
+        }
+        body.fire-theme .theme-switcher label {
+            color: #ffaa00;
+            text-shadow: 0 0 8px rgba(255, 140, 0, 0.7);
+        }
+        body.fire-theme .theme-switcher select {
+            color: #ffaa00;
+            border-color: rgba(255, 100, 0, 0.5);
+        }
+
+        /* ── OCEAN theme ── */
+        body.ocean-theme {
+            background: linear-gradient(135deg, #000d1a 0%, #003366 50%, #005580 100%) !important;
+            animation: none !important;
+        }
+        body.ocean-theme #game-container {
+            border-color: #00ccff !important;
+            box-shadow: 0 0 40px rgba(0, 180, 255, 0.5), 0 0 80px rgba(0, 100, 200, 0.3) !important;
+            animation: none !important;
+        }
+        body.ocean-theme .controls-info {
+            color: #00d4ff;
+            text-shadow: 0 0 10px rgba(0, 200, 255, 0.8);
+            border-color: rgba(0, 180, 255, 0.35);
+        }
+        body.ocean-theme #loading {
+            color: #00d4ff;
+            text-shadow: 0 0 20px rgba(0, 200, 255, 0.8), 0 0 40px rgba(0, 100, 200, 0.5);
+        }
+        body.ocean-theme .theme-switcher {
+            border-color: rgba(0, 180, 255, 0.35);
+        }
+        body.ocean-theme .theme-switcher label {
+            color: #00d4ff;
+            text-shadow: 0 0 8px rgba(0, 200, 255, 0.7);
+        }
+        body.ocean-theme .theme-switcher select {
+            color: #00d4ff;
+            border-color: rgba(0, 180, 255, 0.5);
+        }
+
+        /* ── RETRO (Arcade) theme ── */
+        body.retro-theme {
+            background: linear-gradient(135deg, #08000f 0%, #1a0028 50%, #2e0050 100%) !important;
+            animation: none !important;
+        }
+        body.retro-theme #game-container {
+            border-color: #ffdd00 !important;
+            box-shadow: 0 0 40px rgba(255, 220, 0, 0.5), 0 0 80px rgba(255, 140, 0, 0.25) !important;
+            animation: none !important;
+        }
+        body.retro-theme .controls-info {
+            color: #ffdd00;
+            text-shadow: 0 0 10px rgba(255, 220, 0, 0.8);
+            border-color: rgba(255, 200, 0, 0.35);
+        }
+        body.retro-theme #loading {
+            color: #ffdd00;
+            text-shadow: 0 0 20px rgba(255, 220, 0, 0.8), 0 0 40px rgba(255, 140, 0, 0.5);
+        }
+        body.retro-theme .theme-switcher {
+            border-color: rgba(255, 200, 0, 0.35);
+        }
+        body.retro-theme .theme-switcher label {
+            color: #ffdd00;
+            text-shadow: 0 0 8px rgba(255, 220, 0, 0.7);
+        }
+        body.retro-theme .theme-switcher select {
+            color: #ffdd00;
+            border-color: rgba(255, 200, 0, 0.5);
+        }
+
+        /* ══════════════════════════════════════════════
+           MINIGAME BUTTON
+        ══════════════════════════════════════════════ */
+        .minigame-btn {
+            position: fixed;
+            top: 10px;
+            left: 10px;
+            background: rgba(0, 0, 0, 0.55);
+            color: #ff00ff;
+            border: 2px solid rgba(255, 0, 255, 0.4);
+            border-radius: 20px;
+            padding: 6px 14px;
+            font-family: 'Courier New', monospace;
+            font-size: 13px;
+            font-weight: bold;
+            cursor: pointer;
+            z-index: 1000;
+            text-shadow: 0 0 8px rgba(255, 0, 255, 0.7);
+            letter-spacing: 1px;
+            transition: background 0.15s, border-color 0.15s, box-shadow 0.15s;
+        }
+        .minigame-btn:hover {
+            background: rgba(255, 0, 255, 0.15);
+            border-color: #ff00ff;
+            box-shadow: 0 0 14px rgba(255, 0, 255, 0.4);
+        }
+        body.dark-theme  .minigame-btn { color: #00ff41; border-color: rgba(0,255,65,0.4);   text-shadow: 0 0 8px rgba(0,255,65,0.7); }
+        body.dark-theme  .minigame-btn:hover { border-color:#00ff41; box-shadow:0 0 14px rgba(0,255,65,0.4);   background:rgba(0,255,65,0.1); }
+        body.fire-theme  .minigame-btn { color: #ff8800; border-color: rgba(255,120,0,0.4); text-shadow: 0 0 8px rgba(255,120,0,0.7); }
+        body.fire-theme  .minigame-btn:hover { border-color:#ff8800; box-shadow:0 0 14px rgba(255,120,0,0.4); background:rgba(255,120,0,0.1); }
+        body.ocean-theme .minigame-btn { color: #00ccff; border-color: rgba(0,180,255,0.4); text-shadow: 0 0 8px rgba(0,180,255,0.7); }
+        body.ocean-theme .minigame-btn:hover { border-color:#00ccff; box-shadow:0 0 14px rgba(0,180,255,0.4); background:rgba(0,180,255,0.1); }
+        body.retro-theme .minigame-btn { color: #ffdd00; border-color: rgba(255,220,0,0.4); text-shadow: 0 0 8px rgba(255,220,0,0.7); }
+        body.retro-theme .minigame-btn:hover { border-color:#ffdd00; box-shadow:0 0 14px rgba(255,220,0,0.4); background:rgba(255,220,0,0.1); }
+
+        /* ══════════════════════════════════════════════
+           MINIGAME OVERLAY + PANEL
+        ══════════════════════════════════════════════ */
+        .mg-overlay {
+            display: none;
+            position: fixed;
+            inset: 0;
+            background: rgba(0, 0, 0, 0.88);
+            z-index: 3000;
+            align-items: center;
+            justify-content: center;
+        }
+        .mg-overlay.active { display: flex; }
+
+        .mg-panel {
+            position: relative;
+            width: 520px;
+            background: #07070f;
+            border: 3px solid #00ffff;
+            border-radius: 8px;
+            box-shadow: 0 0 40px rgba(0,255,255,0.35), 0 0 80px rgba(255,0,255,0.18);
+            padding: 18px 20px 14px;
+            font-family: 'Courier New', monospace;
+            overflow: hidden;
+        }
+        /* Animated scanline across the panel */
+        .mg-panel::before {
+            content: '';
+            position: absolute;
+            top: -100%;
+            left: 0; right: 0;
+            height: 3px;
+            background: rgba(0, 255, 255, 0.22);
+            animation: mgScan 4s linear infinite;
+            pointer-events: none;
+            z-index: 0;
+        }
+        @keyframes mgScan { to { top: 110%; } }
+
+        /* Header */
+        .mg-header {
+            display: flex;
+            align-items: center;
+            justify-content: space-between;
+            margin-bottom: 14px;
+            position: relative;
+            z-index: 1;
+        }
+        .mg-title {
+            font-size: 19px;
+            font-weight: bold;
+            color: #00ffff;
+            text-shadow: 0 0 10px rgba(0,255,255,0.6);
+            letter-spacing: 2px;
+        }
+        .mg-close {
+            background: none;
+            border: 2px solid rgba(255, 0, 255, 0.35);
+            color: #ff00ff;
+            border-radius: 6px;
+            width: 30px; height: 30px;
+            cursor: pointer;
+            font-size: 15px;
+            font-family: 'Courier New', monospace;
+            transition: background 0.12s, border-color 0.12s;
+            line-height: 1;
+            display: flex; align-items: center; justify-content: center;
+        }
+        .mg-close:hover { background: rgba(255,0,255,0.15); border-color: #ff00ff; }
+
+        /* Stats bar */
+        .mg-stats {
+            display: flex;
+            gap: 8px;
+            margin-bottom: 14px;
+            position: relative; z-index: 1;
+        }
+        .mg-stat {
+            flex: 1;
+            background: #101020;
+            border: 1px solid rgba(0,255,255,0.18);
+            border-radius: 6px;
+            padding: 5px 4px;
+            text-align: center;
+            display: flex; flex-direction: column; gap: 2px;
+        }
+        .mg-stat-label {
+            font-size: 8px;
+            color: rgba(0,255,255,0.45);
+            letter-spacing: 1px;
+        }
+        .mg-stat-val {
+            font-size: 17px;
+            font-weight: bold;
+            color: #00ffff;
+            text-shadow: 0 0 5px rgba(0,255,255,0.4);
+        }
+
+        /* Game area — grid + overlaid screens */
+        .mg-game-area {
+            position: relative;
+            z-index: 1;
+        }
+        .mg-grid {
+            display: grid;
+            grid-template-columns: repeat(3, 1fr);
+            gap: 14px;
+            padding: 16px;
+            background: #0d1117;
+            border: 2px solid rgba(0,255,255,0.12);
+            border-radius: 8px;
+            cursor: crosshair;
+        }
+
+        /* Individual hole */
+        .mg-hole {
+            position: relative;
+            height: 96px;
+            display: flex;
+            align-items: flex-end;
+            justify-content: center;
+            cursor: crosshair;
+        }
+        /* Dark oval pit — layered on TOP so mole appears to emerge from it */
+        .mg-pit {
+            position: absolute;
+            bottom: 0;
+            width: 116px; height: 38px;
+            background: radial-gradient(ellipse at 50% 40%, #1a0700 0%, #050100 100%);
+            border-radius: 50%;
+            box-shadow: inset 0 6px 20px rgba(0,0,0,0.98);
+            z-index: 2;
+            pointer-events: none;
+        }
+        /* Mole emoji — behind the pit, pops up above it */
+        .mg-mole {
+            position: absolute;
+            bottom: 0;
+            width: 116px;
+            text-align: center;
+            font-size: 54px;
+            line-height: 1;
+            z-index: 1;
+            opacity: 0;
+            transform: translateY(55px);
+            transition: transform 0.13s cubic-bezier(0.34, 1.56, 0.64, 1),
+                        opacity 0.05s ease;
+            pointer-events: none;
+            user-select: none;
+            filter: drop-shadow(0 -3px 6px rgba(255, 180, 50, 0.4));
+        }
+        .mg-mole.up {
+            opacity: 1;
+            transform: translateY(-10px);
+            pointer-events: auto;
+            cursor: crosshair;
+        }
+        .mg-mole.whacked {
+            opacity: 0;
+            transform: translateY(55px);
+            transition: transform 0.08s ease-in, opacity 0.08s ease-in;
+            pointer-events: none;
+        }
+
+        /* Screen overlays (start / countdown / results) */
+        .mg-screen {
+            position: absolute;
+            inset: 0;
+            background: rgba(7, 7, 15, 0.93);
+            border-radius: 8px;
+            display: flex;
+            flex-direction: column;
+            align-items: center;
+            justify-content: center;
+            gap: 10px;
+            z-index: 10;
+        }
+        .mg-screen-title {
+            font-size: 22px;
+            font-weight: bold;
+            color: #00ffff;
+            text-shadow: 0 0 12px rgba(0,255,255,0.6);
+            letter-spacing: 2px;
+        }
+        .mg-screen-desc {
+            font-size: 12px;
+            color: rgba(0,255,255,0.55);
+            text-align: center;
+            line-height: 1.7;
+        }
+        .mg-btn {
+            background: #0a0a20;
+            color: #00ffff;
+            border: 2px solid #00ffff;
+            border-radius: 6px;
+            padding: 9px 26px;
+            font-family: 'Courier New', monospace;
+            font-size: 14px;
+            font-weight: bold;
+            cursor: pointer;
+            letter-spacing: 1px;
+            transition: background 0.12s, box-shadow 0.12s;
+            text-shadow: 0 0 6px rgba(0,255,255,0.5);
+        }
+        .mg-btn:hover {
+            background: rgba(0,255,255,0.12);
+            box-shadow: 0 0 16px rgba(0,255,255,0.4);
+        }
+        .mg-countdown-num {
+            font-size: 82px;
+            font-weight: bold;
+            color: #00ffff;
+            text-shadow: 0 0 30px rgba(0,255,255,0.8), 0 0 60px rgba(0,255,255,0.4);
+            animation: cntPop 0.65s cubic-bezier(0.34, 1.56, 0.64, 1);
+        }
+        @keyframes cntPop { from { transform: scale(2); opacity: 0; } to { transform: scale(1); opacity: 1; } }
+        .mg-results {
+            font-size: 13px;
+            color: rgba(0,255,255,0.7);
+            text-align: center;
+            line-height: 2;
+        }
+        .mg-results strong { color: #ffffff; }
+        .mg-rating {
+            font-size: 15px;
+            font-weight: bold;
+            color: #ff00ff;
+            text-shadow: 0 0 10px rgba(255,0,255,0.6);
+            margin-top: 2px;
+        }
+        .mg-hs-flash {
+            color: #ffdd00;
+            font-weight: bold;
+            font-size: 13px;
+            text-shadow: 0 0 10px rgba(255,220,0,0.6);
+            animation: mgHsAlt 0.45s ease infinite alternate;
+        }
+        @keyframes mgHsAlt { from { opacity: 1; } to { opacity: 0.45; } }
+
+        /* Footer */
+        .mg-footer {
+            margin-top: 10px;
+            font-size: 9px;
+            color: rgba(0,255,255,0.28);
+            text-align: center;
+            letter-spacing: 1px;
+            position: relative; z-index: 1;
+        }
+    </style>
+</head>
+<body>
+    <button class="minigame-btn" id="minigame-btn">🔨 MINIGAME</button>
+
+    <!-- Whack-a-Mole minigame overlay -->
+    <div class="mg-overlay" id="mg-overlay">
+        <div class="mg-panel">
+            <div class="mg-header">
+                <div class="mg-title">⚡ WHACK-A-MOLE ⚡</div>
+                <button class="mg-close" id="mg-close">✕</button>
+            </div>
+
+            <div class="mg-stats">
+                <div class="mg-stat"><span class="mg-stat-label">SCORE</span><span class="mg-stat-val" id="mg-score">0</span></div>
+                <div class="mg-stat"><span class="mg-stat-label">TIME</span><span class="mg-stat-val" id="mg-time">30</span></div>
+                <div class="mg-stat"><span class="mg-stat-label">AVG REACT</span><span class="mg-stat-val" id="mg-avg">--</span></div>
+                <div class="mg-stat"><span class="mg-stat-label">BEST HIT</span><span class="mg-stat-val" id="mg-best">--</span></div>
+            </div>
+
+            <div class="mg-game-area">
+                <div class="mg-grid" id="mg-grid"></div>
+
+                <div class="mg-screen" id="mg-screen-start">
+                    <div class="mg-screen-title">WHACK-A-MOLE</div>
+                    <div class="mg-screen-desc">Smash moles as fast as you can!<br>Reaction time is measured per hit.</div>
+                    <button class="mg-btn" id="mg-start-btn">▶ START GAME</button>
+                </div>
+
+                <div class="mg-screen" id="mg-screen-countdown" style="display:none">
+                    <div class="mg-countdown-num" id="mg-countdown-num">3</div>
+                </div>
+
+                <div class="mg-screen" id="mg-screen-results" style="display:none">
+                    <div class="mg-screen-title">GAME OVER</div>
+                    <div class="mg-results">
+                        <div>SCORE: <strong id="res-score">0</strong></div>
+                        <div>AVG REACTION: <strong id="res-avg">--</strong></div>
+                        <div>BEST HIT: <strong id="res-best">--</strong></div>
+                        <div class="mg-rating" id="res-rating">--</div>
+                        <div class="mg-hs-flash" id="res-hs" style="display:none">🏆 NEW HIGH SCORE!</div>
+                    </div>
+                    <button class="mg-btn" id="mg-replay-btn">▶ PLAY AGAIN</button>
+                </div>
+            </div>
+
+            <div class="mg-footer">High Score: <span id="mg-hs-val">0</span> &nbsp;|&nbsp; Click moles to whack &bull; Miss = clicking empty holes</div>
+        </div>
+    </div>
+
+    <div class="theme-switcher">
+        <label for="theme-select">Theme:</label>
+        <select id="theme-select">
+            <option value="">Cyberpunk</option>
+            <option value="dark-theme">Dark (Matrix)</option>
+            <option value="fire-theme">Fire</option>
+            <option value="ocean-theme">Ocean</option>
+            <option value="retro-theme">Retro</option>
+        </select>
+    </div>
+
+    <div id="game-container"></div>
+    <div id="loading">Loading Super Bros...</div>
+    <div class="controls-info">
+        P1: WASD + F/Shift(attack) + E/RightCtrl(special) | P2: IJKL + U/O(attack) + H/Y(special) | ESC: Pause
+    </div>
+
+    <script>
+        // Theme switcher — runs before game scripts so the theme is applied immediately
+        (function () {
+            var select = document.getElementById('theme-select');
+            var saved = localStorage.getItem('super-bros-theme') || '';
+
+            // Apply saved theme right away (no flash of unstyled content)
+            document.body.className = saved;
+            select.value = saved;
+
+            select.addEventListener('change', function () {
+                document.body.className = select.value;
+                localStorage.setItem('super-bros-theme', select.value);
+            });
+        })();
+    </script>
+
+    <script src="https://cdn.jsdelivr.net/npm/phaser@3.60.0/dist/phaser.min.js"></script>
+    <script src="js/constants.js"></script>
+    <script src="js/characters.js"></script>
+    <script src="js/arenas.js"></script>
+    <script src="js/ai.js"></script>
+    <script src="js/scenes/BootScene.js"></script>
+    <script src="js/scenes/MenuScene.js"></script>
+    <script src="js/scenes/CharacterSelectScene.js"></script>
+    <script src="js/scenes/StageSelectScene.js"></script>
+    <script src="js/scenes/GameScene.js"></script>
+    <script src="js/scenes/PauseScene.js"></script>
+    <script src="js/scenes/VictoryScene.js"></script>
+    <script src="js/main.js"></script>
+    <script src="js/music.js"></script>
+    <script src="js/sfx.js"></script>
+    <script>
+    // ── Minigame + global SFX hooks ─────────────────────────────────────────
+    (function () {
+        // ── DOM refs ──
+        const openBtn   = document.getElementById('minigame-btn');
+        const overlay   = document.getElementById('mg-overlay');
+        const closeBtn  = document.getElementById('mg-close');
+        const grid      = document.getElementById('mg-grid');
+        const startBtn  = document.getElementById('mg-start-btn');
+        const replayBtn = document.getElementById('mg-replay-btn');
+        const scrStart  = document.getElementById('mg-screen-start');
+        const scrCount  = document.getElementById('mg-screen-countdown');
+        const scrResult = document.getElementById('mg-screen-results');
+        const cntNum    = document.getElementById('mg-countdown-num');
+        const elScore   = document.getElementById('mg-score');
+        const elTime    = document.getElementById('mg-time');
+        const elAvg     = document.getElementById('mg-avg');
+        const elBest    = document.getElementById('mg-best');
+        const elHSVal   = document.getElementById('mg-hs-val');
+
+        // ── Config ──
+        const DURATION   = 30;
+        const MAX_ACTIVE = 3;
+        const MOLE_MIN   = 700;
+        const MOLE_MAX   = 1500;
+        const SPAWN_RATE = 650;
+
+        // ── State ──
+        let score = 0, timeLeft = DURATION;
+        let reactions = [], bestMs = Infinity;
+        let active = new Set(), appearAt = {}, escapeTimers = {};
+        let gameTimer = null, spawnInterval = null, running = false;
+        let highScore = +(localStorage.getItem('wam-hs') || 0);
+        elHSVal.textContent = highScore;
+
+        // ── Build 3×3 grid ──
+        const holes = [];
+        for (let i = 0; i < 9; i++) {
+            const hole = document.createElement('div');
+            hole.className = 'mg-hole';
+
+            const mole = document.createElement('div');
+            mole.className = 'mg-mole';
+            mole.textContent = '🐹';
+
+            const pit = document.createElement('div');
+            pit.className = 'mg-pit';
+
+            hole.appendChild(mole);
+            hole.appendChild(pit);
+            grid.appendChild(hole);
+            holes.push({ hole, mole });
+
+            // Whack the mole — stop propagation so grid miss-handler doesn't fire
+            mole.addEventListener('click', e => { e.stopPropagation(); whack(i); });
+        }
+
+        // Miss: any click in the grid that didn't hit a mole
+        grid.addEventListener('click', () => {
+            if (!running) return;
+            SFX.miss();
+            grid.style.borderColor = 'rgba(255,60,60,0.5)';
+            setTimeout(() => { grid.style.borderColor = 'rgba(0,255,255,0.12)'; }, 150);
+        });
+
+        // ── Open / Close ──
+        openBtn.addEventListener('mouseenter', () => SFX.hover());
+        openBtn.addEventListener('click', () => { SFX.open(); overlay.classList.add('active'); });
+
+        closeBtn.addEventListener('mouseenter', () => SFX.hover());
+        closeBtn.addEventListener('click', () => { SFX.close(); closePanel(); });
+
+        overlay.addEventListener('click', e => {
+            if (e.target === overlay) { SFX.close(); closePanel(); }
+        });
+
+        // ── Start / Replay ──
+        startBtn.addEventListener('mouseenter',  () => SFX.hover());
+        startBtn.addEventListener('click',       () => { SFX.click(); startCountdown(); });
+        replayBtn.addEventListener('mouseenter', () => SFX.hover());
+        replayBtn.addEventListener('click',      () => { SFX.click(); startCountdown(); });
+
+        // ── Theme switcher SFX (adds on top of existing change listener) ──
+        const themeSelect = document.getElementById('theme-select');
+        themeSelect.addEventListener('change',      () => SFX.themeChange());
+        themeSelect.addEventListener('mouseenter',  () => SFX.hover());
+
+        // ── Countdown ──
+        function startCountdown() {
+            scrStart.style.display  = 'none';
+            scrResult.style.display = 'none';
+            scrCount.style.display  = 'flex';
+
+            let n = 3;
+            cntNum.textContent  = n;
+            cntNum.style.color  = '#00ffff';
+            restartAnim(cntNum);
+            SFX.countdown();
+
+            const iv = setInterval(() => {
+                n--;
+                if (n > 0) {
+                    cntNum.textContent = n;
+                    restartAnim(cntNum);
+                    SFX.countdown();
+                } else {
+                    cntNum.textContent = 'GO!';
+                    cntNum.style.color = '#ff00ff';
+                    restartAnim(cntNum);
+                    SFX.countdownGo();
+                    clearInterval(iv);
+                    setTimeout(() => {
+                        cntNum.style.color  = '#00ffff';
+                        scrCount.style.display = 'none';
+                        play();
+                    }, 700);
+                }
+            }, 900);
+        }
+
+        function restartAnim(el) {
+            el.style.animation = 'none';
+            void el.offsetWidth;          // force reflow
+            el.style.animation = '';
+        }
+
+        // ── Main game loop ──
+        function play() {
+            score = 0; timeLeft = DURATION; reactions = []; bestMs = Infinity;
+            active.clear(); appearAt = {}; escapeTimers = {};
+            running = true;
+            updateStats();
+
+            gameTimer = setInterval(() => {
+                timeLeft--;
+                elTime.textContent  = timeLeft;
+                elTime.style.color  = timeLeft <= 5 ? '#ff4444' : '#00ffff';
+                if (timeLeft > 0 && timeLeft <= 5) SFX.countdown();
+                if (timeLeft <= 0) endGame();
+            }, 1000);
+
+            spawnMole();
+            spawnInterval = setInterval(spawnMole, SPAWN_RATE);
+        }
+
+        function spawnMole() {
+            if (!running || active.size >= MAX_ACTIVE) return;
+            const pool = [];
+            for (let i = 0; i < 9; i++) if (!active.has(i)) pool.push(i);
+            if (!pool.length) return;
+            showMole(pool[Math.floor(Math.random() * pool.length)]);
+        }
+
+        function showMole(idx) {
+            active.add(idx);
+            appearAt[idx] = performance.now();
+            holes[idx].mole.classList.remove('whacked');
+            holes[idx].mole.classList.add('up');
+            SFX.moleUp();
+            const dur = MOLE_MIN + Math.random() * (MOLE_MAX - MOLE_MIN);
+            escapeTimers[idx] = setTimeout(() => hideMole(idx, true), dur);
+        }
+
+        function hideMole(idx, escaped) {
+            if (!active.has(idx)) return;
+            active.delete(idx);
+            clearTimeout(escapeTimers[idx]);
+            delete appearAt[idx];
+            holes[idx].mole.classList.remove('up', 'whacked');
+            if (escaped) SFX.moleEscape();
+        }
+
+        function whack(idx) {
+            if (!running || !active.has(idx)) return;
+            const ms = performance.now() - appearAt[idx];
+            reactions.push(ms);
+            if (ms < bestMs) bestMs = ms;
+            score++;
+            SFX.whack();
+            setTimeout(() => SFX.scoreUp(), 55);
+            holes[idx].mole.classList.add('whacked');
+            active.delete(idx);
+            clearTimeout(escapeTimers[idx]);
+            delete appearAt[idx];
+            setTimeout(() => holes[idx].mole.classList.remove('up', 'whacked'), 180);
+            updateStats();
+        }
+
+        function updateStats() {
+            elScore.textContent = score;
+            elTime.textContent  = timeLeft;
+            if (reactions.length) {
+                const avg = Math.round(reactions.reduce((a, b) => a + b, 0) / reactions.length);
+                elAvg.textContent  = avg + 'ms';
+                elBest.textContent = Math.round(bestMs) + 'ms';
+            }
+        }
+
+        function endGame() {
+            running = false;
+            clearInterval(gameTimer);
+            clearInterval(spawnInterval);
+            for (let i = 0; i < 9; i++) hideMole(i, false);
+            SFX.gameOver();
+
+            const avg  = reactions.length
+                ? Math.round(reactions.reduce((a, b) => a + b, 0) / reactions.length)
+                : 0;
+            const isHS = score > highScore;
+            if (isHS) {
+                highScore = score;
+                localStorage.setItem('wam-hs', highScore);
+                elHSVal.textContent = highScore;
+            }
+
+            document.getElementById('res-score').textContent = score;
+            document.getElementById('res-avg').textContent   = reactions.length ? avg + 'ms' : 'N/A';
+            document.getElementById('res-best').textContent  = bestMs < Infinity ? Math.round(bestMs) + 'ms' : 'N/A';
+            document.getElementById('res-rating').textContent = getRating(avg);
+            document.getElementById('res-hs').style.display  = isHS ? 'block' : 'none';
+
+            elTime.style.color  = '#00ffff';
+            scrResult.style.display = 'flex';
+            if (isHS) setTimeout(() => SFX.newHighScore(), 420);
+        }
+
+        function closePanel() {
+            running = false;
+            clearInterval(gameTimer);
+            clearInterval(spawnInterval);
+            for (let i = 0; i < 9; i++) hideMole(i, false);
+            overlay.classList.remove('active');
+            score = 0; timeLeft = DURATION; reactions = []; bestMs = Infinity;
+            updateStats();
+            elTime.style.color  = '#00ffff';
+            scrStart.style.display  = 'flex';
+            scrResult.style.display = 'none';
+            scrCount.style.display  = 'none';
+        }
+
+        function getRating(avg) {
+            if (!avg)      return 'N/A';
+            if (avg < 200) return '⚡ IMPOSSIBLE ⚡';
+            if (avg < 300) return '🚀 LIGHTNING FAST';
+            if (avg < 400) return '💫 PROFESSIONAL';
+            if (avg < 500) return '⭐ VERY FAST';
+            if (avg < 700) return '✅ GOOD';
+            if (avg < 1000) return '📊 AVERAGE';
+            return '🐌 SLOW POKE';
+        }
+    })();
+    </script>
+</body>
+</html>

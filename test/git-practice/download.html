@@ -1,0 +1,407 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>RIVALS – Download</title>
+    <style>
+        * { margin: 0; padding: 0; box-sizing: border-box; }
+
+        :root {
+            scroll-behavior: smooth;
+        }
+
+        body {
+            font-family: 'Segoe UI', Tahoma, Geneva, Verdana, sans-serif;
+            background: #0d0d1a;
+            color: white;
+            overflow-x: hidden;
+        }
+
+        /* ── HERO ── */
+        .hero {
+            min-height: 100vh;
+            display: flex;
+            flex-direction: column;
+            align-items: center;
+            justify-content: center;
+            gap: 28px;
+            padding: 60px 20px;
+            background: linear-gradient(135deg, #1a1a2e 0%, #16213e 100%);
+            position: relative;
+            overflow: hidden;
+        }
+
+        .hero::before {
+            content: '';
+            position: absolute;
+            inset: 0;
+            background:
+                radial-gradient(circle at 20% 50%, rgba(255,68,68,0.09) 0%, transparent 55%),
+                radial-gradient(circle at 80% 20%, rgba(78,205,196,0.07) 0%, transparent 55%);
+            pointer-events: none;
+        }
+
+        .logo-icons { font-size: 64px; display: flex; gap: 28px; filter: drop-shadow(0 0 18px rgba(255,68,68,0.6)); }
+
+        .title {
+            font-size: clamp(64px, 12vw, 120px);
+            font-weight: bold;
+            font-family: 'Impact', 'Arial Black', sans-serif;
+            color: #ff4444;
+            letter-spacing: 16px;
+            text-shadow: 0 0 20px #ff4444, 0 0 50px #ff0000;
+            animation: titleGlow 2s ease-in-out infinite;
+        }
+
+        @keyframes titleGlow {
+            0%, 100% { text-shadow: 0 0 20px #ff4444, 0 0 50px #ff0000; transform: scale(1); }
+            50%       { text-shadow: 0 0 35px #ff6666, 0 0 80px #ff0000; transform: scale(1.02); }
+        }
+
+        .tagline {
+            font-size: 17px;
+            color: #777;
+            letter-spacing: 10px;
+            text-transform: uppercase;
+        }
+
+        .hero-desc {
+            font-size: 19px;
+            color: #aaa;
+            text-align: center;
+            max-width: 520px;
+            line-height: 1.7;
+        }
+
+        .scroll-arrow {
+            margin-top: 10px;
+            font-size: 28px;
+            color: #ff4444;
+            animation: bounce 1.6s ease-in-out infinite;
+            cursor: pointer;
+        }
+
+        @keyframes bounce {
+            0%, 100% { transform: translateY(0); }
+            50%       { transform: translateY(10px); }
+        }
+
+        /* ── FEATURES ── */
+        .section {
+            padding: 90px 40px;
+            display: flex;
+            flex-direction: column;
+            align-items: center;
+            gap: 50px;
+        }
+
+        .section-title {
+            font-size: 36px;
+            font-weight: bold;
+            color: #ff4444;
+            letter-spacing: 4px;
+            text-transform: uppercase;
+            text-shadow: 0 0 20px rgba(255,68,68,0.4);
+        }
+
+        .features-grid {
+            display: grid;
+            grid-template-columns: repeat(auto-fit, minmax(200px, 1fr));
+            gap: 20px;
+            width: 100%;
+            max-width: 900px;
+        }
+
+        .feature-card {
+            background: rgba(255,255,255,0.05);
+            border: 1px solid rgba(255,255,255,0.1);
+            border-radius: 16px;
+            padding: 28px 20px;
+            text-align: center;
+            transition: all 0.3s;
+        }
+
+        .feature-card:hover {
+            border-color: rgba(255,107,107,0.4);
+            background: rgba(255,107,107,0.07);
+            transform: translateY(-4px);
+        }
+
+        .feature-card .icon { font-size: 38px; display: block; margin-bottom: 12px; }
+        .feature-card .label { color: #fff; font-weight: bold; font-size: 16px; margin-bottom: 6px; }
+        .feature-card .sub { color: #888; font-size: 13px; }
+
+        /* ── DOWNLOAD SECTION ── */
+        .download-section {
+            background: linear-gradient(180deg, #0d0d1a 0%, #131328 100%);
+            border-top: 1px solid rgba(255,68,68,0.2);
+        }
+
+        .platform-cards {
+            display: flex;
+            flex-wrap: wrap;
+            gap: 24px;
+            justify-content: center;
+            width: 100%;
+            max-width: 900px;
+        }
+
+        .platform-card {
+            flex: 1;
+            min-width: 220px;
+            max-width: 270px;
+            background: rgba(255,255,255,0.04);
+            border: 2px solid rgba(255,255,255,0.1);
+            border-radius: 18px;
+            padding: 30px 20px;
+            text-align: center;
+            display: flex;
+            flex-direction: column;
+            align-items: center;
+            gap: 14px;
+            transition: all 0.3s;
+        }
+
+        .platform-card.available {
+            border-color: rgba(255,107,107,0.5);
+            background: rgba(255,68,68,0.05);
+        }
+
+        .platform-card.available:hover {
+            border-color: #ff4444;
+            background: rgba(255,68,68,0.1);
+            transform: translateY(-6px);
+            box-shadow: 0 12px 40px rgba(255,68,68,0.3);
+        }
+
+        .platform-card.soon {
+            opacity: 0.45;
+        }
+
+        .platform-icon { font-size: 52px; }
+        .platform-name { font-size: 22px; font-weight: bold; color: #fff; }
+        .platform-detail { font-size: 13px; color: #888; line-height: 1.5; }
+
+        .btn-download {
+            display: inline-flex;
+            align-items: center;
+            gap: 10px;
+            padding: 14px 32px;
+            font-size: 16px;
+            font-weight: bold;
+            letter-spacing: 2px;
+            text-transform: uppercase;
+            background: linear-gradient(45deg, #ff6b6b, #ee5a5a);
+            color: white;
+            border: none;
+            border-radius: 10px;
+            cursor: pointer;
+            text-decoration: none;
+            box-shadow: 0 6px 24px rgba(255,107,107,0.45);
+            transition: all 0.3s;
+            width: 100%;
+            justify-content: center;
+        }
+
+        .btn-download:hover {
+            background: linear-gradient(45deg, #ff8888, #ff6b6b);
+            box-shadow: 0 10px 36px rgba(255,107,107,0.7);
+        }
+
+        .smartscreen-note {
+            font-size: 12px;
+            color: #888;
+            line-height: 1.6;
+            background: rgba(255,215,0,0.06);
+            border: 1px solid rgba(255,215,0,0.2);
+            border-radius: 8px;
+            padding: 10px 12px;
+            text-align: left;
+            width: 100%;
+        }
+
+        .smartscreen-note strong { color: #ffd700; }
+
+        .badge-soon {
+            padding: 10px 26px;
+            background: rgba(255,255,255,0.06);
+            border: 1px solid rgba(255,255,255,0.15);
+            border-radius: 10px;
+            color: #666;
+            font-size: 14px;
+            font-weight: bold;
+            letter-spacing: 2px;
+            width: 100%;
+            text-align: center;
+        }
+
+        /* ── SYSTEM REQ ── */
+        .req-section {
+            background: #111120;
+            border-top: 1px solid rgba(255,255,255,0.05);
+        }
+
+        .req-grid {
+            display: grid;
+            grid-template-columns: repeat(auto-fit, minmax(260px, 1fr));
+            gap: 20px;
+            width: 100%;
+            max-width: 800px;
+        }
+
+        .req-card {
+            background: rgba(255,255,255,0.04);
+            border: 1px solid rgba(255,255,255,0.08);
+            border-radius: 14px;
+            padding: 24px;
+        }
+
+        .req-card h3 {
+            font-size: 16px;
+            font-weight: bold;
+            color: #ff4444;
+            margin-bottom: 14px;
+            letter-spacing: 2px;
+            text-transform: uppercase;
+        }
+
+        .req-row {
+            display: flex;
+            justify-content: space-between;
+            padding: 6px 0;
+            border-bottom: 1px solid rgba(255,255,255,0.05);
+            font-size: 13px;
+        }
+
+        .req-row:last-child { border-bottom: none; }
+        .req-row .req-key { color: #888; }
+        .req-row .req-val { color: #ccc; font-weight: bold; }
+
+        /* ── FOOTER ── */
+        footer {
+            text-align: center;
+            padding: 30px;
+            color: #444;
+            font-size: 13px;
+            border-top: 1px solid rgba(255,255,255,0.04);
+        }
+    </style>
+</head>
+<body>
+
+    <!-- HERO -->
+    <div class="hero">
+        <div class="logo-icons">
+            <span>&#9876;</span>
+            <span>&#9876;</span>
+        </div>
+        <div class="title">RIVALS</div>
+        <div class="tagline">Fight for glory</div>
+        <p class="hero-desc">A fast-paced 2D team shooter with online multiplayer, ranked seasons, 30+ weapons, and non-stop action.</p>
+        <div class="scroll-arrow" onclick="document.getElementById('download').scrollIntoView()">&#8964;</div>
+    </div>
+
+    <!-- FEATURES -->
+    <div class="section" style="background:#0f0f20;">
+        <div class="section-title">Features</div>
+        <div class="features-grid">
+            <div class="feature-card">
+                <span class="icon">⚔️</span>
+                <div class="label">Team Modes</div>
+                <div class="sub">1v1, 2v2, 3v3 vs AI or online</div>
+            </div>
+            <div class="feature-card">
+                <span class="icon">🌐</span>
+                <div class="label">Online Multiplayer</div>
+                <div class="sub">Play with friends via room codes</div>
+            </div>
+            <div class="feature-card">
+                <span class="icon">🔫</span>
+                <div class="label">30+ Weapons</div>
+                <div class="sub">Shop, unlock, and equip guns</div>
+            </div>
+            <div class="feature-card">
+                <span class="icon">🏆</span>
+                <div class="label">Leaderboards</div>
+                <div class="sub">Track kills and compete</div>
+            </div>
+            <div class="feature-card">
+                <span class="icon">🗺️</span>
+                <div class="label">Multiple Maps</div>
+                <div class="sub">Vote for the map each round</div>
+            </div>
+            <div class="feature-card">
+                <span class="icon">🎯</span>
+                <div class="label">Sniper Mode</div>
+                <div class="sub">Long-range precision duels</div>
+            </div>
+        </div>
+    </div>
+
+    <!-- DOWNLOAD -->
+    <div class="section download-section" id="download">
+        <div class="section-title">Download</div>
+        <div class="platform-cards">
+
+            <!-- Windows -->
+            <div class="platform-card available">
+                <div class="platform-icon">🪟</div>
+                <div class="platform-name">Windows</div>
+                <div class="platform-detail">Windows 10 / 11<br>64-bit &nbsp;·&nbsp; ~86 MB</div>
+                <a class="btn-download" href="https://github.com/jaydenzhao2014-cloud/git-practice/releases/download/v1.0.0/RIVALS.Setup.1.0.0.3.exe" download>
+                    ⬇ Download
+                </a>
+                <div class="smartscreen-note">
+                    ⚠️ <strong>Windows may warn you:</strong> Click <strong>Keep</strong> in your browser, then if Windows shows "Protected your PC", click <strong>More info → Run anyway</strong>.
+                </div>
+            </div>
+
+            <!-- macOS -->
+            <div class="platform-card soon">
+                <div class="platform-icon">🍎</div>
+                <div class="platform-name">macOS</div>
+                <div class="platform-detail">macOS 12+<br>Intel &amp; Apple Silicon</div>
+                <div class="badge-soon">Coming Soon</div>
+            </div>
+
+            <!-- Linux -->
+            <div class="platform-card soon">
+                <div class="platform-icon">🐧</div>
+                <div class="platform-name">Linux</div>
+                <div class="platform-detail">Ubuntu 20.04+<br>AppImage / .deb</div>
+                <div class="badge-soon">Coming Soon</div>
+            </div>
+
+        </div>
+    </div>
+
+    <!-- SYSTEM REQUIREMENTS -->
+    <div class="section req-section">
+        <div class="section-title">System Requirements</div>
+        <div class="req-grid">
+            <div class="req-card">
+                <h3>Minimum</h3>
+                <div class="req-row"><span class="req-key">OS</span><span class="req-val">Windows 10 64-bit</span></div>
+                <div class="req-row"><span class="req-key">CPU</span><span class="req-val">Dual Core 2 GHz</span></div>
+                <div class="req-row"><span class="req-key">RAM</span><span class="req-val">4 GB</span></div>
+                <div class="req-row"><span class="req-key">Storage</span><span class="req-val">200 MB</span></div>
+                <div class="req-row"><span class="req-key">Internet</span><span class="req-val">For multiplayer</span></div>
+            </div>
+            <div class="req-card">
+                <h3>Recommended</h3>
+                <div class="req-row"><span class="req-key">OS</span><span class="req-val">Windows 11 64-bit</span></div>
+                <div class="req-row"><span class="req-key">CPU</span><span class="req-val">Quad Core 3 GHz</span></div>
+                <div class="req-row"><span class="req-key">RAM</span><span class="req-val">8 GB</span></div>
+                <div class="req-row"><span class="req-key">Storage</span><span class="req-val">200 MB</span></div>
+                <div class="req-row"><span class="req-key">Internet</span><span class="req-val">For multiplayer</span></div>
+            </div>
+        </div>
+    </div>
+
+    <footer>
+        &copy; 2026 RIVALS &nbsp;·&nbsp; v1.0.0
+    </footer>
+
+</body>
+</html>

@@ -1,0 +1,13 @@
+node_modules
+dist/win-unpacked
+dist/builder-debug.yml
+index.html
+main.js
+package.json
+package-lock.json
+Untitled-1.html
+icon.ico
+icon.png
+README.md
+.claude
+.gitignore

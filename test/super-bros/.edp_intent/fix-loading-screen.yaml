@@ -1,0 +1,55 @@
+version: "1.0.0"
+generatedBy: "edp-6-mcp"
+timestamp: "2026-01-24T10:00:00Z"
+originalIntent: "Fix game stuck on loading screen"
+
+scope:
+  allowedPaths:
+    - "js/scenes/BootScene.js"
+  forbiddenPaths:
+    - "js/scenes/GameScene.js"
+    - "js/scenes/MenuScene.js"
+    - "js/characters.js"
+    - "js/arenas.js"
+  newFiles: []
+
+apiContracts:
+  - name: "generateParticleTextures"
+    type: "function"
+    params: []
+    returns: "void"
+    required: true
+  - name: "generateAttackEffects"
+    type: "function"
+    params: []
+    returns: "void"
+    required: true
+
+acceptanceCriteria:
+  - id: "AC-001"
+    description: "Game loads without JavaScript errors"
+    given: "User opens index.html in browser"
+    when: "Phaser initializes and runs BootScene"
+    then: "No console errors, textures generated successfully"
+  - id: "AC-002"
+    description: "Game transitions to MenuScene"
+    given: "BootScene completes asset generation"
+    when: "create() method is called"
+    then: "Loading text hidden, MenuScene displayed"
+  - id: "AC-003"
+    description: "All particle textures work"
+    given: "MenuScene uses particle_star texture"
+    when: "Particles are emitted"
+    then: "Particles display correctly without errors"
+
+nonGoals:
+  - "Adding new features"
+  - "Changing game mechanics"
+  - "Modifying other scenes"
+  - "Performance optimization"
+
+complexityBudget:
+  maxNewFunctions: 0
+  maxNewFiles: 0
+  maxLinesOfCode: 50
+  maxDependencies: 0
